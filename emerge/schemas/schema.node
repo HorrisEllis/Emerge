@@ -1,0 +1,44 @@
+envelope: 1
+uuid: nexus-export-schema-node
+type: schema
+id: node
+context: >-
+  emerge/schemas — sovereign local copy. Origin: lib/node-schemas/schema.node (shared canonical
+  version, may have moved on independently since this copy was made — sovereignty means emerge does
+  not depend on it at runtime, not that the two can never drift).
+intent: null
+summary: null
+system: emerge
+tags: []
+exported_at: 1789235656680
+source: nexus.lib.node-export
+payload:
+  status: REAL
+  source: >-
+    loom/schema/definitions.js — a generic loom graph node is one of component|hook|wire; this
+    schema is the union
+  fields:
+    kind:
+      type: string
+      required: true
+      description: '''component'' | ''hook'' | ''wire'' — which real loom declare() this node is'
+    id:
+      type: string
+      required: true
+      description: real id, meaning depends on kind
+    component_id:
+      type: string
+      required: false
+      description: present on hook nodes only
+    from_hook_id:
+      type: string
+      required: false
+      description: present on wire nodes only
+    to_hook_id:
+      type: string
+      required: false
+      description: present on wire nodes only
+    direction:
+      type: string
+      required: false
+      description: hook only — 'in' | 'out' | 'bidirectional'

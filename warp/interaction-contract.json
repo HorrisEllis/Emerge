@@ -1,0 +1,11 @@
+{
+  "id": "warp-v1",
+  "version": "1.5.0",
+  "namespace": "warp",
+  "_built_2026_10_05": "EV0 (2), docs/2026-10-02-emerge-field-memory-build-phasemap.spec — projected from the server source, not hand-reconciled; lib/route-contract-check.js holds it to the code (served and declared must match). WARP is a library: it serves no route and emits no event of its own (its Streams carry their callers' events, which those callers declare), so it has no event-taxonomy.js — an empty one is refused by ET1.",
+  "ports": {},
+  "uuid": "warp-contract-v1-0000-2026-1005-jamesbrooks-001",
+  "role": "Event -> Gate -> Stream -> StreamLog, Axiom, unified dispatch — required, never called over http",
+  "health": null,
+  "routes": []
+}

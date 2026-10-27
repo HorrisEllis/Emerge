@@ -1,0 +1,36 @@
+envelope: 1
+uuid: nexus-export-capability-emerge.check
+type: capability
+id: emerge.check
+context: emerge/registry-components.js — declared capability
+intent: null
+summary: null
+system: null
+tags:
+  - emerge
+  - capability
+exported_at: 1790684787140
+source: emerge/registry-components.js:emerge.check
+occurrences: 1
+firstSeenAt: 1789250730116
+lastSeenAt: 1790684787140
+fingerprint: 6d928dc475feb83e2d4eded5
+payload:
+  intent: []
+  grammar:
+    - check
+    - emerge check
+  tags:
+    - emerge
+  id: emerge.check
+  namespace: emerge
+  name: check
+  version: 1.1.0
+  route:
+    method: POST
+    path: /api/check
+  description: Pre-compile spec validation
+  params: []
+  permissions:
+    - system
+  hooks: {}

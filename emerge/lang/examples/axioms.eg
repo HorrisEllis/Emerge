@@ -1,0 +1,34 @@
+// axioms.eg — constraints guard one compartment; an axiom guards the whole program.
+// A user axiom is checked after every top-level statement; breaking it halts the program.
+
+compartment Account {
+  id = "co-account-001"
+  state { balance: 100, owner: null }
+  constraint solvent hard { state.balance >= 0 }
+  constraint owned hard { len(state.owner) > 0 }
+  on "deposit" (ev) { state.balance += ev.amount }
+  on "withdraw" (ev) { state.balance -= ev.amount }
+  on "claim" (ev) { state.owner = ev.owner }
+}
+on "rejected" (r) { print("refused", r.signal, "—", r.constraint) }
+on "gap.opened" (g) { print("gap:", g.message) }
+
+var audit_total = 100
+axiom BOOKS_BALANCE { Account.state.balance == audit_total }
+
+// owner is null, so "owned" cannot be evaluated: that is a gap, and the state does not change
+emit "deposit" { amount: 50 }
+print("balance before an owner:", Account.state.balance)
+
+fn deposit(n) {
+  audit_total += n
+  emit "deposit" { amount: n }
+}
+
+emit "claim" { owner: "james" }
+deposit(50)                        // one statement: the audit and the account move together
+emit "withdraw" { amount: 500 }    // refused by solvent: the books still balance
+print("owner", Account.state.owner, "balance", Account.state.balance)
+
+emit "withdraw" { amount: 30 }     // goes through, but audit_total is not updated...
+print("unreachable: the axiom halts on the line above")

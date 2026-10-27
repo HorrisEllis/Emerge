@@ -1,0 +1,61 @@
+envelope: 1
+uuid: nexus-export-schema-component
+type: schema
+id: component
+context: >-
+  emerge/schemas — sovereign local copy. Origin: lib/node-schemas/schema.component (shared canonical
+  version, may have moved on independently since this copy was made — sovereignty means emerge does
+  not depend on it at runtime, not that the two can never drift).
+intent: null
+summary: null
+system: emerge
+tags: []
+exported_at: 1789250524205
+source: nexus.lib.node-export
+payload:
+  status: REAL
+  source: >-
+    loom/schema/component.js — COMPONENT_SCHEMA (real, checked directly: requiredKeys
+    ['id','namespace','name','version'], uuid enforced separately by the loom.uuid-present Axiom in
+    driver.js, not duplicated here). emerge's own use: emerge.node-taxonomy.md marks this VIA LOOM —
+    emerge doesn't author .component records itself, capability-map.js derives them from emerge's
+    own real capability registry ('emerge' is confirmed present in capability-map.js's own SYSTEMS
+    map). This local copy exists so emerge can validate/interpret component-shaped data it receives
+    back from that derivation without a runtime dependency on lib/node-schemas.js — same reasoning
+    already applied to this system's other VIA LOOM types (hook/wire/node), which already have local
+    copies; component was the one missed in that earlier pass, found and closed here directly rather
+    than left unnoticed.
+  fields:
+    id:
+      type: string
+      required: true
+      description: real, unique component id
+    namespace:
+      type: string
+      required: true
+      description: real component namespace
+    name:
+      type: string
+      required: true
+      description: real component display/file name
+    version:
+      type: string
+      required: true
+      description: real semver-ish version string
+    dir:
+      type: string
+      required: false
+      description: optional real filesystem path, added by SB1
+    uuid:
+      type: string
+      required: true
+      description: enforced by the loom.uuid-present Axiom, not this schema directly
+    boundary:
+      type: array
+      required: false
+      description: >-
+        optional 1-5 identity-defining invariants for this component, same real concept as
+        cos/kernel.js's Compartment.axioms — what this component IS and is NOT, bounding its scope
+        regardless of what language or syntax it's actually written in. Optional because most real
+        components today declare none; a component using this is opting into being treated like a
+        bounded compartment, not just a named, versioned file.

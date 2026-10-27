@@ -1,0 +1,104 @@
+// primitives.eg — dynamic primitives: a kind is the schema for a primitive, a template makes instances at run time.
+//
+//   kind      what any component claiming it must have (hooks + shapes, typed state, boundary count, fns)
+//   template  a parameterised component; spawn T("id", …) makes a live instance with its own state and uuid
+//   wire      connects instances held in variables, at run time; despawn removes one and drops its wires
+
+kind Stage {
+  require version
+  in take(x: { v: num })
+  out give: { v: num }
+  state { count: int }
+  boundary_count 1..2
+}
+
+kind Filter is Stage {          // everything a Stage needs, plus a way to ask what it let through
+  fn passed()
+}
+
+template Scale(factor: num) is Stage {
+  namespace = "pipe"
+  version = "1.0.0"
+  state { count: 0 }
+  boundary non_negative_count { state.count >= 0 }
+  in take(x: { v: num }) {
+    state.count += 1
+    emit out give { v: x.v * factor }
+  }
+  out give: { v: num }
+}
+
+template Clamp(lo: num, hi: num) is Filter {
+  namespace = "pipe"
+  version = "1.0.0"
+  state { count: 0, kept: 0 }
+  boundary ordered { lo <= hi }
+  in take(x: { v: num }) {
+    state.count += 1
+    if x.v >= lo and x.v <= hi {
+      state.kept += 1
+      emit out give { v: x.v }
+    }
+  }
+  out give: { v: num }
+  fn passed() = state.kept
+}
+
+// build a pipeline from data, at run time
+fn make(step) {
+  if step.op == "scale" { return spawn Scale(step.id, step.arg) }
+  if step.op == "clamp" { return spawn Clamp(step.id, step.lo, step.hi) }
+  raise("unknown op {step.op}")
+}
+
+fn chain(stages) {
+  wire "input" -> stages[0].take
+  for i in 1..len(stages) {
+    let prev = stages[i - 1]
+    let next = stages[i]
+    wire prev.give -> next.take
+  }
+  let last = stages[-1]
+  wire last.give -> "output"
+}
+
+let plan = [
+  { op: "scale", id: "double", arg: 2 },
+  { op: "clamp", id: "band", lo: 0, hi: 15 },
+  { op: "scale", id: "half", arg: 0.5 },
+]
+let stages = plan |> map(make)
+chain(stages)
+
+on "output" (o) { print("  out:", o.v) }
+
+print("pipeline:", stages |> map(fn(s) = s.name) |> join(" → "))
+for v in [3, 6, 9, -1] {
+  print("in:", v)
+  emit "input" { v: v }
+}
+
+let band = stages[1]
+print("band let through", band.passed(), "of", band.state.count)
+print("is a Filter?", is_kind(band, "Filter"), "| is a Stage?", is_kind(band, "Stage"), "| double a Filter?", is_kind(stages[0], "Filter"))
+print("Scale instances:", instances("Scale") |> map(fn(s) = s.id))
+
+// speculate: what if the band were wider? despawn, spawn and rewire inside a whatif — none of it survives
+let wide_ids = whatif {
+  despawn band
+  let wider = spawn Clamp("wide", -100, 100)
+  wire stages[0].give -> wider.take
+  wire wider.give -> stages[2].take
+  emit "input" { v: 50 }
+  instances("Clamp") |> map(fn(s) = s.id)
+}
+print("in the branch the Clamps were", wide_ids, "— for real they are", instances("Clamp") |> map(fn(s) = s.id))
+
+// a template's parameters can break its own boundary: that instance is refused at spawn
+try { spawn Clamp("upside-down", 10, 1) } else e { print("refused:", e.message) }
+
+// despawn for real: the band's wires go with it
+despawn band
+print("after despawn:", len(components().wires), "wires;", len(instances("Clamp")), "Clamp instances")
+try { print(band.state) } else e { print("stale handle:", e.message) }
+print("ledger ok:", ledger_verify())

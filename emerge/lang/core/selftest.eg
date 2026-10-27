@@ -1,0 +1,64 @@
+// lang/core/selftest.eg — what every build of Emerge must still do. eg bootstrap runs these in both backends.
+// When you change a primitive on purpose, change the test that pins it here too.
+
+test "prelude: lists" {
+  expect map([1, 2, 3], fn(x) = x * 2) == [2, 4, 6]
+  expect filter(0..10, fn(x) = x % 3 == 0) == [0, 3, 6, 9]
+  expect reduce([1, 2, 3, 4], fn(a, x) = a + x, 0) == 10
+  expect find([5, 8, 13], fn(x) = x > 6) == 8
+  expect any([1, 2], fn(x) = x > 1) and all([1, 2], fn(x) = x > 0)
+  expect count([1, 2, 3, 4], fn(x) = x % 2 == 0) == 2
+  expect push([1], 2) == [1, 2] and reverse([1, 2, 3]) == [3, 2, 1] and reverse("abc") == "cba"
+  expect sum([1, 2, 3.5]) == 6.5
+  expect index_of([1, 2, 3], 3) == 2 and index_of("emerge", "erg") == 2 and index_of([1], 9) == -1
+  expect without({a: 1, b: 2}, "a") == {b: 2}
+  expect flatten([[1, 2], 3, [4]]) == [1, 2, 3, 4]
+  expect zip([1, 2, 3], ["a", "b"]) == [[1, "a"], [2, "b"]]
+  expect unique([1, 2, 1, 3, 2]) == [1, 2, 3]
+  expect group_by([1, 2, 3, 4], fn(x) = x % 2 == 0) == {false: [1, 3], true: [2, 4]}
+  expect take([1, 2, 3], 2) == [1, 2] and drop([1, 2, 3], 2) == [3]
+}
+
+test "prelude: errors name the caller" {
+  try { map(3, fn(x) = x) } else e {
+    expect e.message == "map needs a list, got num"
+    expect e.file == "selftest.eg", "the error should point at this file, not the prelude"
+  }
+}
+
+compartment Probe {
+  id = "selftest.probe"
+  state { n: 0, tag: null }
+  constraint non_negative hard { state.n >= 0 }
+  constraint modest soft cost 2 { state.n < 10 }
+  on "add" (e) { state.n += e.k }
+}
+on "rejected" (r) { record "seen_rejection" { constraint: r.constraint } }
+on "gap.opened" (g) { record "seen_gap" { type: g.type } }
+on "promoted" (p) { record "seen_promotion" { } }
+
+test "primitives: constraints" {
+  emit "add" { k: 3 }
+  expect Probe.state.n == 3
+  emit "add" { k: -10 }
+  expect Probe.state.n == 3, "hard refuses"
+  expect len(filter(ledger(), fn(e) = e.kind == "seen_rejection")) == 1
+  emit "add" { k: 20 }
+  expect Probe.state.n == 23 and spent() == 2, "soft permits at its cost"
+}
+
+test "primitives: gaps and promotion" {
+  gap "selftest" pressure 0.5
+  expect gaps()[0].type == "structural"
+  promote "x" with proof false
+  expect gaps()[1].type == "logical" and gaps()[1].pressure == 0.9
+  expect len(filter(ledger(), fn(e) = e.kind == "seen_gap")) == 2
+}
+
+test "primitives: whatif leaves no trace" {
+  let w = whatif {
+    emit "add" { k: 1 }
+    Probe.state.n
+  }
+  expect w == 1 and Probe.state.n == 0
+}

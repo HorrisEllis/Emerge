@@ -1,0 +1,34 @@
+envelope: 1
+uuid: nexus-export-system-emerge
+type: system
+id: emerge
+context: emerge — the system record, regenerated from emerge/registry-components.js
+intent: null
+summary: null
+system: null
+tags:
+  - emerge
+  - system
+exported_at: 1790684787160
+source: nexus.lib.system-nodes
+occurrences: 1
+firstSeenAt: 1789250730122
+lastSeenAt: 1790684787160
+fingerprint: 691704a91c51d2da3db1ab54
+payload:
+  id: emerge
+  kernel: null
+  port: null
+  entry: null
+  spec: emerge/spec/emerge.spec
+  label: null
+  purpose: null
+  hasCapabilities: true
+  capabilities: 9
+  commands: 9
+  declaredNotServed: []
+  servedNotDeclared: 0
+  sources:
+    declared: emerge/registry-components.js
+    served: null
+    errors: []

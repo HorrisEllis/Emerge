@@ -1,0 +1,36 @@
+envelope: 1
+uuid: nexus-export-capability-emerge.seams
+type: capability
+id: emerge.seams
+context: emerge/registry-components.js — declared capability
+intent: null
+summary: null
+system: null
+tags:
+  - emerge
+  - capability
+exported_at: 1790684787144
+source: emerge/registry-components.js:emerge.seams
+occurrences: 1
+firstSeenAt: 1789250730122
+lastSeenAt: 1790684787144
+fingerprint: 7e49c936e1c9d82039ee5ac6
+payload:
+  intent: []
+  grammar:
+    - seams
+    - emerge seams
+  tags:
+    - emerge
+  id: emerge.seams
+  namespace: emerge
+  name: seams
+  version: 1.1.0
+  route:
+    method: GET
+    path: /api/seams
+  description: Active SEAM sessions for current file
+  params: []
+  permissions:
+    - system
+  hooks: {}

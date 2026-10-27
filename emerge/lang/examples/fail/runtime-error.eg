@@ -1,0 +1,8 @@
+// fail/runtime-error.eg — a program that fails loudly: exit 1, file:line on stderr, nothing swallowed.
+fn ratio(a, b) = a / b
+print("before")
+let xs = [1, 2, 0]
+for x in xs {
+  print("10 /", x, "=", ratio(10, x))
+}
+print("never printed")

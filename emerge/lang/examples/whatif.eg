@@ -1,0 +1,34 @@
+// whatif.eg — speculative branches: fork the world, look, and leave it untouched.
+
+compartment Tank {
+  id = "co-tank-001"
+  state { level: 50 }
+  constraint not_overflowing hard { state.level <= 100 }
+  constraint not_empty hard { state.level >= 0 }
+  on "fill" (ev) { state.level += ev.amount }
+  on "drain" (ev) { state.level -= ev.amount }
+}
+on "rejected" (r) { print("  (refused: {r.constraint})") }
+
+fn try_fill(amount) = whatif {
+  emit "fill" { amount: amount }
+  Tank.state.level
+}
+
+for amount in [10, 40, 60] {
+  print("if we filled {amount}: level would be", try_fill(amount))
+}
+print("real level is still", Tank.state.level)
+
+// pick the largest safe fill by speculation, then do it for real
+let candidates = [5, 25, 45, 65]
+let safe = candidates |> filter(fn(a) = try_fill(a) == Tank.state.level + a)
+print("safe fills:", safe)
+emit "fill" { amount: max(safe) }
+print("filled:", Tank.state.level)
+
+// random() draws from the run's seed — and a whatif does not use up the real world's draws
+let peek = whatif { random() }
+let real = random()
+print("same draw?", peek == real)
+print("ledger ok:", ledger_verify())

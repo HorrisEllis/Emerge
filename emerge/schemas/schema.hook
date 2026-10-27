@@ -1,0 +1,49 @@
+envelope: 1
+uuid: nexus-export-schema-hook
+type: schema
+id: hook
+context: >-
+  emerge/schemas — sovereign local copy. Origin: lib/node-schemas/schema.hook (shared canonical
+  version, may have moved on independently since this copy was made — sovereignty means emerge does
+  not depend on it at runtime, not that the two can never drift).
+intent: null
+summary: null
+system: emerge
+tags: []
+exported_at: 1789235656679
+source: nexus.lib.node-export
+payload:
+  status: REAL
+  source: >-
+    loom/schema/hook.js — HOOK_SCHEMA (real, enforced alongside COMPONENT_SCHEMA). Found genuinely
+    missing this pass: 'hook' was added to KNOWN_TYPES and treated as REAL throughout this session's
+    node-taxonomy mapping, but no schema.hook file was ever actually created — a real gap, not
+    caught until building sovereign per-system copies required a real source file to copy.
+  fields:
+    id:
+      type: string
+      required: true
+      description: real hook id
+    component_id:
+      type: string
+      required: true
+      description: real id of the component this hook belongs to
+    name:
+      type: string
+      required: true
+      description: real hook name
+    type:
+      type: string
+      required: true
+      description: >-
+        real, open string — a seed list exists (KNOWN_HOOK_TYPES: api, event_bus, callto, direct,
+        webserver, cli) but it is explicitly not a closed enum; new types are added by registering
+        them, not by editing it
+    direction:
+      type: string
+      required: true
+      description: '''in'' | ''out'' | ''bidirectional'''
+    uuid:
+      type: string
+      required: true
+      description: enforced by the loom.uuid-present Axiom, not this schema directly

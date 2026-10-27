@@ -1,0 +1,59 @@
+// hello.eg — the everyday language: values, functions, loops, pipes, strings.
+
+let name = "Emerge"
+print("hello from {name}, {len(name)} letters")
+
+fn square(x: num): num = x * x
+
+fn describe(n: int): string {
+  if n % 15 == 0 { return "fizzbuzz" }
+  else if n % 3 == 0 { return "fizz" }
+  else if n % 5 == 0 { return "buzz" }
+  return str(n)
+}
+
+print(1..16 |> map(describe) |> join(" "))
+
+let squares = 1..6 |> map(square)
+print("squares", squares, "sum", sum(squares))
+
+var evens = []
+for i, x in squares {
+  if x % 2 == 0 { evens = push(evens, "#{i}={x}") }
+}
+print("even squares at", evens)
+
+let person = { name: "James", tools: ["nexus", "warp", "emerge"], depth: 3 }
+for k, v in person { print("  {k}: {v}") }
+print("knows emerge?", person.tools contains "emerge")
+print("missing key is", person.age ?? "unknown")
+
+// closures capture their scope
+fn counter() {
+  var n = 0
+  return fn() {
+    n += 1
+    return n
+  }
+}
+let next = counter()
+next()
+next()
+print("counter reached", next())
+
+// strings
+let line = "  signal, gap, record ,ledger  "
+let words = split(trim(line), ",") |> map(trim) |> sort
+print(words, "->", join(words |> map(upper), "|"))
+print("matches a version?", "v1.2.0" matches "^v[0-9]+\\.[0-9]+\\.[0-9]+$")
+
+// while + break/skip
+var k = 0
+var odd = []
+while true {
+  k += 1
+  if k > 9 { break }
+  if k % 2 == 0 { skip }
+  odd = push(odd, k)
+}
+print("odd", odd, "2**10 =", 2 ** 10)

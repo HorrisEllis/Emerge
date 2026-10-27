@@ -1,0 +1,38 @@
+envelope: 1
+uuid: nexus-step-gate-reply-accept
+type: step_gate
+id: reply.accept
+context: lib/step-gates — the gate a reply passes before any of it is turned into files (0.39.282 N21).
+intent: A reply that only says it could not do the work is a refusal, not a result — it is blocked, never "replied".
+summary: >-
+  Live evidence 2026-09-29: "I can't safely rebuild src/kernel/state.js because the project-specific code tools are not
+  actually available" + an empty fence was passed on as a reply and state.js landed at 0 bytes.
+system: nexus
+tags: [step_gate, build]
+source: docs/2026-09-29-nex-node-store-phasemap.spec#N21
+payload:
+  step: reply.accept
+  on_block: drop
+  checks:
+    - id: reply-non-empty
+      kind: non_empty
+      min_chars: 1
+    - id: reply-not-refusal
+      kind: not_refusal
+      # A refusal is a reply that says it cannot do the work AND carries no non-empty code. The phrases are matched
+      # case-insensitively; extend them here, not in code.
+      phrases:
+        - "i can't safely"
+        - "i cannot safely"
+        - "i can't rebuild"
+        - "i cannot rebuild"
+        - "tools are not actually available"
+        - "tools are not available"
+        - "i don't have access to"
+        - "i do not have access to"
+        - "i'm unable to"
+        - "i am unable to"
+        - "i can't help with"
+        - "i cannot help with"
+        - "i can't complete"
+        - "i cannot complete"

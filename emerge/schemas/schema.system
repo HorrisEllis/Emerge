@@ -1,0 +1,44 @@
+envelope: 1
+uuid: nexus-export-schema-system
+type: schema
+id: system
+context: >-
+  emerge/schemas — sovereign local copy. Origin: lib/node-schemas/schema.system (shared canonical
+  version, may have moved on independently since this copy was made — sovereignty means emerge does
+  not depend on it at runtime, not that the two can never drift).
+intent: null
+summary: null
+system: emerge
+tags: []
+exported_at: 1789235656680
+source: nexus.lib.node-export
+payload:
+  status: OPEN
+  source: >-
+    Proposed this session, grounded in loom/scanners/capability-map.js's real SYSTEMS map (the
+    actual, checked list of which systems it scans: cortex, idearium, guardian, loom, ollama,
+    eravos, clear-glass (x2), emerge, architect, copilot, bridge, nexus-healer) and
+    nexus/autopilot.js's per-kernel definitions. Marked OPEN, not REAL — no real code anywhere
+    constructs a persisted "system" record with these fields; SYSTEMS is a plain object literal, not
+    a node file. Also found genuinely missing this pass: registered in KNOWN_TYPES and treated as
+    real throughout this session's mapping, but no schema.system file was ever actually created
+    until now.
+  fields:
+    id:
+      type: string
+      required: true
+      description: real system name, matching capability-map.js's own SYSTEMS map key
+    hasCapabilities:
+      type: boolean
+      required: false
+      description: >-
+        whether this system has a real registry-components.js — most do, some (versionium,
+        intelligence) don't get scanned despite having one, a real confirmed gap this session found
+    port:
+      type: number
+      required: false
+      description: real port this system listens on, when it runs its own server
+    spec:
+      type: string
+      required: false
+      description: real path to this system's own .spec file, when one exists

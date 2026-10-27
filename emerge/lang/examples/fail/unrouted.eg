@@ -1,0 +1,5 @@
+// fail/unrouted.eg — signals nobody handles are not dropped: they go to the ledger and a summary on stderr.
+emit "nobody.listens" { n: 1 }
+emit "nobody.listens" { n: 2 }
+emit "also.ignored"
+print("unrouted so far:", len(ledger() |> filter(fn(e) = e.kind == "unrouted")))

@@ -1,0 +1,8 @@
+// modules/main.eg — use another .eg file as a module.
+use "./lib/stats.eg" as stats
+
+let samples = [3, 9, 4, 12, 7]
+print("using", stats.version)
+print("summary", stats.summary(samples))
+print("sorted", sort(samples), "by distance from 8:", sort_by(samples, fn(x) = abs(x - 8)))
+try { stats.mean([]) } else e { print("module error surfaced:", e.message, "in", e.file) }

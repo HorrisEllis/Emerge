@@ -1,0 +1,36 @@
+envelope: 1
+uuid: nexus-step-gate-reply-on-task
+type: step_gate
+id: reply.on_task
+context: lib/step-gates — the gate a tool-loop reply passes to show the agent still has the task (0.60.50 CE3).
+intent: A reply that hands the task back to James ("What would you like me to do with this material?") is off-task, not an answer. It is blocked at the step, and the run is re-prompted once with its task header.
+summary: >-
+  Live evidence 2026-10-15 (BL30 build, job c2e60104): after 7 tool calls the agent answered "What would you like me to do
+  with this material?" and offered six options; the step still showed done and only the planner caught it, 3m26s later.
+system: nexus
+tags: [step_gate, build, run]
+source: docs/2026-10-15-code-tab-run-state-phasemap.spec#CE3_reply_on_task_gate
+payload:
+  step: reply.on_task
+  on_block: reprompt
+  # a block is an event (step.blocked) and a console line; it is not a gap — the re-prompt is the remedy, and a gap per
+  # off-task reply would bury the real ones
+  report_gap: false
+  checks:
+    - id: reply-not-asking-back
+      kind: not_asking_back
+      # An off-task reply asks the person what to do AND carries no tool call and no code (a fenced block passes: it is
+      # work). Matched case-insensitively; extend the list here, not in code.
+      phrases:
+        - "what would you like me to do"
+        - "what would you like to do with"
+        - "how would you like me to proceed"
+        - "how would you like to proceed"
+        - "what should i do next"
+        - "what do you want me to do"
+        - "tell me what you'd like"
+        - "tell me what you would like"
+        - "let me know what you'd like"
+        - "let me know what you would like"
+        - "i can use the supplied excerpt as context"
+        - "continue reading the atlas"

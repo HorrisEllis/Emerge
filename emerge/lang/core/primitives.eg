@@ -1,0 +1,60 @@
+// lang/core/primitives.eg — the core rules of Emerge, as data.
+// Edit this file, then run:  eg bootstrap
+// The build proves itself (core/selftest.eg and every example, in both backends) before it replaces the current one.
+// Nothing here is duplicated in JavaScript: this file is the only place these rules live.
+// Only literal data is allowed here — the file is evaluated before any primitive exists.
+
+// constraint types: a type that permits a violation lets the transition through at its cost (added to spent())
+let constraint_types = {
+  hard:          { permits_violation: false, default_cost: 1 },
+  soft:          { permits_violation: true,  default_cost: 1 },
+  probabilistic: { permits_violation: true,  default_cost: 1 },
+  temporal:      { permits_violation: false, default_cost: 1 },
+  causal:        { permits_violation: false, default_cost: 1 },
+  relational:    { permits_violation: false, default_cost: 1 }
+}
+
+let gaps = {
+  types: ["logical", "evidential", "temporal", "assumption", "contradiction", "structural", "contextual", "causal"],
+  default_type: "structural",
+  pressure_min: 0,
+  pressure_max: 1,
+  // a constraint that needs a null state field cannot be evaluated: that is a gap of this pressure and type
+  constraint_gap: { pressure: 0.8, type: "evidential" },
+  // promote … with proof false
+  promotion_refused: { pressure: 0.9, type: "logical" }
+}
+
+// the names of the signals the runtime itself emits
+let signals = {
+  rejected: "rejected",
+  gap_opened: "gap.opened",
+  promoted: "promoted"
+}
+
+// strict: if / while / and / or / not need a real bool. false: null, false, 0, "", [] and {} are false, all else true.
+// (constraints, boundaries, axioms, expect and proofs are laws: they always need a bool)
+let truth = { strict: true }
+
+let dispatch = {
+  max_deliveries: 100000,
+  unrouted: "log"            // "log": recorded + summarised on stderr · "error": a signal nobody handles stops the program
+}
+
+let transitions = {
+  discard_emits_on_refusal: true   // a refused or gapped transition's emits never leave it
+}
+
+let components = {
+  boundary_max: 5,
+  hook_type: "event_bus"           // the loom hook type written by eg components
+}
+
+// compile-time rules: "error" stops the build of a program, "warning" reports it, "off" says nothing
+let diagnostics = {
+  NO_SILENT_DROP: "error",              // an empty else block
+  SIGNAL_MUST_ROUTE_OR_LOG: "warning",  // emit nobody handles, an out hook with no wire, an in hook nothing feeds
+  GAP_IS_FIRST_CLASS: "error",          // gap pressure outside its range, an unknown gap type
+  EXECUTION_IS_TRACEABLE: "error",      // a compartment or component without id / namespace / version
+  unused_constraint: "warning"          // a constraint that reads no state
+}

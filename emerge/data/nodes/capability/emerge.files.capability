@@ -1,0 +1,36 @@
+envelope: 1
+uuid: nexus-export-capability-emerge.files
+type: capability
+id: emerge.files
+context: emerge/registry-components.js — declared capability
+intent: null
+summary: null
+system: null
+tags:
+  - emerge
+  - capability
+exported_at: 1790684787143
+source: emerge/registry-components.js:emerge.files
+occurrences: 1
+firstSeenAt: 1789250730121
+lastSeenAt: 1790684787143
+fingerprint: 3fb5c3ad5820b62d8578d5c7
+payload:
+  intent: []
+  grammar:
+    - files
+    - emerge files
+  tags:
+    - emerge
+  id: emerge.files
+  namespace: emerge
+  name: files
+  version: 1.1.0
+  route:
+    method: GET
+    path: /api/files
+  description: File browser for spec loading
+  params: []
+  permissions:
+    - system
+  hooks: {}

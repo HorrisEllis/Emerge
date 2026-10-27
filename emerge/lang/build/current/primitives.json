@@ -1,0 +1,77 @@
+{
+  "constraint_types": {
+    "hard": {
+      "permits_violation": false,
+      "default_cost": 1
+    },
+    "soft": {
+      "permits_violation": true,
+      "default_cost": 1
+    },
+    "probabilistic": {
+      "permits_violation": true,
+      "default_cost": 1
+    },
+    "temporal": {
+      "permits_violation": false,
+      "default_cost": 1
+    },
+    "causal": {
+      "permits_violation": false,
+      "default_cost": 1
+    },
+    "relational": {
+      "permits_violation": false,
+      "default_cost": 1
+    }
+  },
+  "gaps": {
+    "types": [
+      "logical",
+      "evidential",
+      "temporal",
+      "assumption",
+      "contradiction",
+      "structural",
+      "contextual",
+      "causal"
+    ],
+    "default_type": "structural",
+    "pressure_min": 0,
+    "pressure_max": 1,
+    "constraint_gap": {
+      "pressure": 0.8,
+      "type": "evidential"
+    },
+    "promotion_refused": {
+      "pressure": 0.9,
+      "type": "logical"
+    }
+  },
+  "signals": {
+    "rejected": "rejected",
+    "gap_opened": "gap.opened",
+    "promoted": "promoted"
+  },
+  "truth": {
+    "strict": true
+  },
+  "dispatch": {
+    "max_deliveries": 100000,
+    "unrouted": "log"
+  },
+  "transitions": {
+    "discard_emits_on_refusal": true
+  },
+  "components": {
+    "boundary_max": 5,
+    "hook_type": "event_bus"
+  },
+  "diagnostics": {
+    "NO_SILENT_DROP": "error",
+    "SIGNAL_MUST_ROUTE_OR_LOG": "warning",
+    "GAP_IS_FIRST_CLASS": "error",
+    "EXECUTION_IS_TRACEABLE": "error",
+    "unused_constraint": "warning"
+  }
+}

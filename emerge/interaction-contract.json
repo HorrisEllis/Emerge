@@ -1,0 +1,66 @@
+{
+  "id": "emerge-v1",
+  "version": "1.0.0",
+  "namespace": "emerge",
+  "_built_2026_10_05": "EV0 (2), docs/2026-10-02-emerge-field-memory-build-phasemap.spec — projected from the server source, not hand-reconciled; lib/route-contract-check.js holds it to the code (served and declared must match). Anything else under GET is a static file from emerge/ui.",
+  "ports": {
+    "http": 4242
+  },
+  "uuid": "emerge-contract-v1-0000-2026-1005-jamesbrooks-001",
+  "role": "The Emerge IDE server — compile, check, chat and the event stream",
+  "health": {
+    "method": "GET",
+    "path": "/status"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "description": "the IDE page (emerge/ui)"
+    },
+    {
+      "method": "GET",
+      "path": "/events",
+      "description": "SSE — the IDE's streams"
+    },
+    {
+      "method": "GET",
+      "path": "/status"
+    },
+    {
+      "method": "GET",
+      "path": "/ollama-status"
+    },
+    {
+      "method": "POST",
+      "path": "/compile",
+      "description": "202 — emits io.compile"
+    },
+    {
+      "method": "POST",
+      "path": "/check",
+      "description": "202 — emits io.check"
+    },
+    {
+      "method": "POST",
+      "path": "/spec",
+      "description": "202 — emits io.spec"
+    },
+    {
+      "method": "POST",
+      "path": "/snapshot",
+      "description": "202 — emits compiler.snapshot"
+    },
+    {
+      "method": "POST",
+      "path": "/chat",
+      "description": "202 — emits llm.request"
+    },
+    {
+      "method": "POST",
+      "path": "/api/codegen",
+      "reachable": false,
+      "description": "UNREACHABLE as written: every POST is answered (404) by the POST block above it, and its `method` is not defined. Declared because the code declares it; not fixed here (EV0 maps, it does not change behaviour)."
+    }
+  ]
+}

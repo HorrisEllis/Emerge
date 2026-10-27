@@ -1,0 +1,12 @@
+// lib/stats.eg — a module: its top-level fns, lets and compartments are its exports.
+
+let version = "stats-1"
+
+fn mean(xs: list): num {
+  expect len(xs) > 0, "mean of nothing"
+  return sum(xs) / len(xs)
+}
+
+fn spread(xs: list): num = max(xs) - min(xs)
+
+fn summary(xs: list): map = { n: len(xs), mean: mean(xs), spread: spread(xs) }

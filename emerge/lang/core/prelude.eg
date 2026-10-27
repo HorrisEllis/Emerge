@@ -1,0 +1,164 @@
+// lang/core/prelude.eg — the standard library, written in Emerge.
+// Every top-level fn whose name does not start with _ becomes a builtin for every program (and may replace a native).
+// Edit, add, then: eg bootstrap
+// An error raised in here is reported at the caller's line, not this file's.
+
+fn _need_list(xs, who) {
+  if type_of(xs) != "list" { raise("{who} needs a list, got {type_of(xs)}") }
+}
+fn _need_fn(f, who) {
+  if type_of(f) != "fn" { raise("{who} needs a fn, got {type_of(f)}") }
+}
+
+// ── lists ────────────────────────────────────────────────────────────────────
+fn map(xs, f) {
+  _need_list(xs, "map")
+  _need_fn(f, "map")
+  var out = []
+  for x in xs { out = push(out, f(x)) }
+  return out
+}
+
+fn filter(xs, f) {
+  _need_list(xs, "filter")
+  _need_fn(f, "filter")
+  var out = []
+  for x in xs {
+    if truthy(f(x), "filter's fn") { out = push(out, x) }
+  }
+  return out
+}
+
+fn reduce(xs, f, init) {
+  _need_list(xs, "reduce")
+  _need_fn(f, "reduce")
+  var acc = init
+  for x in xs { acc = f(acc, x) }
+  return acc
+}
+
+fn find(xs, f) {
+  _need_list(xs, "find")
+  _need_fn(f, "find")
+  for x in xs {
+    if truthy(f(x), "find's fn") { return x }
+  }
+  return null
+}
+
+fn any(xs, f) {
+  _need_list(xs, "any")
+  _need_fn(f, "any")
+  for x in xs {
+    if truthy(f(x), "any's fn") { return true }
+  }
+  return false
+}
+
+fn all(xs, f) {
+  _need_list(xs, "all")
+  _need_fn(f, "all")
+  for x in xs {
+    if not truthy(f(x), "all's fn") { return false }
+  }
+  return true
+}
+
+fn count(xs, f) {
+  _need_list(xs, "count")
+  _need_fn(f, "count")
+  var n = 0
+  for x in xs {
+    if truthy(f(x), "count's fn") { n += 1 }
+  }
+  return n
+}
+
+fn push(xs, x) {
+  _need_list(xs, "push")
+  return xs + [x]
+}
+
+fn reverse(v) {
+  if type_of(v) == "string" { return join(reverse(split(v, "")), "") }
+  _need_list(v, "reverse")
+  var out = []
+  var i = len(v) - 1
+  while i >= 0 {
+    out = out + [v[i]]
+    i -= 1
+  }
+  return out
+}
+
+fn sum(xs) {
+  _need_list(xs, "sum")
+  var total = 0
+  for x in xs {
+    if type_of(x) != "num" { raise("sum needs a num, got {type_of(x)}") }
+    total += x
+  }
+  return total
+}
+
+fn index_of(v, x) {
+  if type_of(v) == "string" {
+    if type_of(x) != "string" { raise("index_of needs a string, got {type_of(x)}") }
+    return find_text(v, x)
+  }
+  _need_list(v, "index_of")
+  for i, y in v {
+    if y == x { return i }
+  }
+  return -1
+}
+
+fn without(m, k) {
+  if type_of(m) != "map" { raise("without needs a map, got {type_of(m)}") }
+  var out = {}
+  for key, value in m {
+    if key != k { out[key] = value }
+  }
+  return out
+}
+
+// ── added in Emerge, no JavaScript ───────────────────────────────────────────
+fn flatten(xss) {
+  _need_list(xss, "flatten")
+  var out = []
+  for xs in xss {
+    if type_of(xs) == "list" { out = out + xs } else { out = push(out, xs) }
+  }
+  return out
+}
+
+fn zip(a, b) {
+  _need_list(a, "zip")
+  _need_list(b, "zip")
+  var out = []
+  for i in 0..min(len(a), len(b)) { out = push(out, [a[i], b[i]]) }
+  return out
+}
+
+fn unique(xs) {
+  _need_list(xs, "unique")
+  var out = []
+  for x in xs {
+    if not (out contains x) { out = push(out, x) }
+  }
+  return out
+}
+
+fn group_by(xs, f) {
+  _need_list(xs, "group_by")
+  _need_fn(f, "group_by")
+  var groups = {}
+  for x in xs {
+    let k = str(f(x))
+    groups[k] = push(groups[k] ?? [], x)
+  }
+  return groups
+}
+
+fn take(xs, n) = slice(xs, 0, n)
+fn drop(xs, n) = slice(xs, n)

@@ -1,0 +1,37 @@
+{
+  "name": "@jamesbrooks/warp",
+  "version": "2.0.1",
+  "description": "Pure functional event-driven devkit. Event -> Gate -> Stream -> StreamLog, plus Axiom as an enforced primitive and a unified dispatch (exact-cache / pre-generation-filter / population / cascade / axiom-gate / score-retain / escalate). Zero dependencies, zero coupling to any consuming project.",
+  "main": "index.js",
+  "license": "MIT",
+  "author": "James Brooks",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "event-driven",
+    "dispatch",
+    "cache",
+    "llm",
+    "axiom",
+    "state-machine"
+  ],
+  "engines": {
+    "node": ">=14"
+  },
+  "dependencies": {},
+  "scripts": {
+    "test": "node test/core.test.js && node test/digest-regression.test.js && node test/v1.1.0-additions.test.js && node test/v1.4-additions.test.js"
+  },
+  "files": [
+    "CHANGELOG.md",
+    "LICENSE",
+    "MANIFEST.json",
+    "adapters",
+    "core",
+    "dispatch",
+    "index.js",
+    "plugins",
+    "spec"
+  ]
+}

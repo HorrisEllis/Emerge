@@ -1,0 +1,45 @@
+// tests.eg — run with: eg test tests.eg   (eg run skips test blocks)
+
+compartment Stack {
+  id = "co-stack-001"
+  state { items: [] }
+  constraint bounded hard { len(state.items) <= 3 }
+  on "push" (ev) { state.items = push(state.items, ev.x) }
+  on "pop" { state.items = slice(state.items, 0, len(state.items) - 1) }
+  fn top() = state.items[-1]
+}
+on "rejected" (r) { record "overflow" { signal: r.signal } }
+
+fn gcd(a: int, b: int): int {
+  if b == 0 { return a }
+  return gcd(b, a % b)
+}
+
+test "gcd" {
+  expect gcd(48, 18) == 6
+  expect gcd(7, 5) == 1
+}
+
+test "stack pushes and pops" {
+  emit "push" { x: 1 }
+  emit "push" { x: 2 }
+  expect Stack.top() == 2
+  emit "pop"
+  expect Stack.state.items == [1]
+}
+
+test "stack refuses a fourth item" {
+  for x in [1, 2, 3, 4] { emit "push" { x: x } }
+  expect len(Stack.state.items) == 3, "bounded should hold"
+  expect len(ledger() |> filter(fn(e) = e.kind == "overflow")) == 1
+}
+
+test "each test starts from the same world" {
+  expect Stack.state.items == [], "earlier tests leaked state"
+}
+
+test "this one fails on purpose" {
+  expect 1 + 1 == 3, "arithmetic still works"
+}
+
+print("top level ran; tests run under eg test")

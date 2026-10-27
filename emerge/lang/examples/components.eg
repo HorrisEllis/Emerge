@@ -1,0 +1,85 @@
+// components.eg — components are bounded, versioned units that talk only through typed hooks, joined by wires.
+// The wiring is the program's architecture: `eg components components.eg` exports it as loom records.
+
+component Sensor {
+  id = "sensor.raw"
+  namespace = "sensor"
+  version = "1.0.0"
+  intent = "turn raw readings into typed samples"
+  state { seen: 0 }
+
+  boundary counts_up { state.seen >= 0 }
+
+  in reading(r: { value: num, unit: string }) {
+    if r.unit != "C" { raise("Sensor only speaks Celsius, got {r.unit}") }
+    state.seen += 1
+    emit out sample { n: state.seen, celsius: r.value }
+  }
+  out sample: { n: int, celsius: num }
+}
+
+component Smoother {
+  id = "sensor.smoother"
+  namespace = "sensor"
+  version = "1.1.0"
+  intent = "moving average over the last 3 samples"
+  state { window: [] }
+
+  boundary bounded_window { len(state.window) <= 3 }
+
+  in sample(s: { n: int, celsius: num }) {
+    var w = push(state.window, s.celsius)
+    if len(w) > 3 { w = slice(w, 1) }
+    state.window = w
+    emit out smoothed { celsius: round(sum(w) / len(w) * 10) / 10, of: len(w) }
+  }
+  out smoothed: { celsius: num, of: int }
+
+  fn latest() = state.window[-1]
+}
+
+component Alarm {
+  id = "sensor.alarm"
+  namespace = "sensor"
+  version = "1.0.0"
+  state { limit: 30, tripped: false }
+
+  boundary sane_limit { state.limit > 0 and state.limit < 100 }
+
+  in check(t: { celsius: num, of: int }) {
+    if t.celsius > state.limit and not state.tripped {
+      state.tripped = true
+      emit out alert { celsius: t.celsius }
+    }
+  }
+  in configure(c: { limit: num }) { state.limit = c.limit }
+  out alert: { celsius: num }
+}
+
+// the architecture: signal → hook → hook → hook → signal
+wire "reading" -> Sensor.reading
+wire Sensor.sample -> Smoother.sample
+wire Smoother.smoothed -> Alarm.check
+wire Alarm.alert -> "alert"
+
+on "alert" (a) { print("ALERT at {a.celsius}°C") }
+on "rejected" (r) { print("refused:", r.compartment, "kept its boundary", r.constraint) }
+
+send Alarm.configure { limit: 25 }
+for v in [21, 23, 24, 29, 31] {
+  emit "reading" { value: v, unit: "C" }
+  print("reading {v} → smoothed window", Smoother.state.window)
+}
+
+// a boundary holds like any hard constraint: this would make the limit absurd, so it is refused
+send Alarm.configure { limit: 500 }
+print("limit still", Alarm.state.limit)
+
+// a hook's shape is its seam: a wrong payload is a loud error, not a silent coercion
+try { send Smoother.sample { n: 1, celsius: "hot" } } else e { print("seam:", e.message) }
+try { emit "reading" { value: 20, unit: "F" } } else e { print("sensor:", e.message) }
+
+print("Sensor", Sensor.version, Sensor.hooks, "latest", Smoother.latest())
+let g = components()
+print(len(g.components), "components,", len(g.hooks), "hooks,", len(g.wires), "wires")
+for w in g.wires { print("  ", w.id) }

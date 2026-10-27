@@ -1,0 +1,40 @@
+{
+  "emerge": "1.5.0",
+  "build": 1,
+  "sources": {
+    "core/primitives.eg": "b293032dcefd718509e38b28943ecdff6c9d682de68a6295fcd9989ecfb41c27",
+    "core/prelude.eg": "f91b20387e61d09186cb66f30e0f8067586522e333309f944f2fd644d66d2c56",
+    "core/selftest.eg": "7a1b4f60fde76fb51565a73b189279bd4d1f3f8312e0a17d4a30b53f0c9bb56b"
+  },
+  "outputs": {
+    "primitives.json": "3b0acb7490c80e96032bf570724e2f3b92bb26b0c3710c4708f3c3bf8f01e49c",
+    "prelude.js": "5b00a7952e02972e1403916100e05c22ce5c28dc7c5643ec83c9db087a00dfda"
+  },
+  "prelude_builtins": [
+    "map",
+    "filter",
+    "reduce",
+    "find",
+    "any",
+    "all",
+    "count",
+    "push",
+    "reverse",
+    "sum",
+    "index_of",
+    "without",
+    "flatten",
+    "zip",
+    "unique",
+    "group_by",
+    "take",
+    "drop"
+  ],
+  "replaces_natives": [],
+  "checks": [
+    "primitives: schema ok",
+    "prelude: 18 builtins (0 replace natives)",
+    "selftest: 5 passed, 0 failed in both backends",
+    "examples: 11 identical in both backends"
+  ]
+}

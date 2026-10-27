@@ -1,0 +1,49 @@
+// idearium.eg — ideas move through phases; promotion needs proof; gaps are first-class.
+
+compartment Ideas {
+  id = "co-idearium-001"
+  intent = "hold ideas and their phase"
+  state { ideas: {}, promoted: [] }
+
+  constraint known_phases hard {
+    all(values(state.ideas), fn(i) = ["seed", "expanding", "specced", "building"] contains i.phase)
+  }
+
+  on "idea.new" (ev) {
+    state.ideas[ev.id] = { title: ev.title, phase: "seed", gaps: 0 }
+  }
+  on "idea.advance" (ev) {
+    let i = state.ideas[ev.id]
+    expect i != null, "no idea {ev.id}"
+    state.ideas[ev.id].phase = ev.to
+  }
+  on "idea.gap" (ev) {
+    state.ideas[ev.id].gaps += 1
+  }
+  on "promoted" (ev) {
+    state.promoted = push(state.promoted, ev.value)
+  }
+
+  fn phase(id: string) = state.ideas[id].phase
+  fn ready(id: string): bool = state.ideas[id].phase == "specced" and state.ideas[id].gaps == 0
+}
+
+on "gap.opened" (g) { print("gap:", g.message, "@", g.pressure) }
+on "rejected" (r) { print("rejected", r.signal, "by", r.constraint) }
+
+emit "idea.new" { id: "loom", title: "component registry as wiring harness" }
+emit "idea.new" { id: "swirl", title: "flow-field particles" }
+emit "idea.advance" { id: "loom", to: "specced" }
+emit "idea.advance" { id: "swirl", to: "dreaming" }   // not a phase: refused
+
+print("loom is", Ideas.phase("loom"), "| swirl is", Ideas.phase("swirl"))
+
+promote "loom" with proof Ideas.ready("loom")
+promote "swirl" with proof Ideas.ready("swirl")        // proof false: refused, opens a logical gap
+
+gap "swirl has no spec yet" pressure 0.6 type structural
+emit "idea.gap" { id: "swirl" }
+
+print("promoted:", Ideas.state.promoted)
+print("open gaps:", gaps() |> map(fn(g) = "{g.type}/{g.pressure}"))
+print("ledger ok:", ledger_verify())

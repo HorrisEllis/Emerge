@@ -1,0 +1,50 @@
+// counter.eg — a compartment: state that only changes through recorded, constrained transitions.
+
+compartment Counter {
+  id = "co-counter-001"
+  intent = "count ticks without ever going negative"
+  state { count: 0, history: [] }
+
+  constraint never_negative hard { state.count >= 0 }
+  constraint stays_small soft cost 3 { state.count <= 10 }
+
+  on "tick" (ev) {
+    state.count += ev.by
+    state.history = push(state.history, ev.by)
+    emit "counted" { count: state.count }
+  }
+
+  on "reset" {
+    state.count = 0
+    state.history = []
+  }
+
+  fn average() {
+    if len(state.history) == 0 { return 0 }
+    return sum(state.history) / len(state.history)
+  }
+}
+
+on "counted" (ev) { print("counted", ev.count) }
+on "rejected" (ev) { print("refused:", ev.signal, "broke", ev.constraint) }
+
+emit "tick" { by: 4 }
+emit "tick" { by: 5 }
+emit "tick" { by: -20 }          // would go negative: hard constraint refuses it, "counted" never fires
+emit "tick" { by: 3 }            // 12 > 10: the soft constraint lets it through at cost 3
+print("state", Counter.state, "average", Counter.average(), "spent", spent())
+
+// a lens cannot write: Counter.state is a frozen copy
+try {
+  var s = Counter.state
+  s.count = 99
+} else e {
+  print("lens:", e.message)
+}
+
+emit "reset"
+print("after reset", Counter.state.count)
+print("ledger entries", len(ledger()), "verified", ledger_verify())
+for entry in ledger() |> filter(fn(e) = e.kind == "transition" or e.kind == "rejected") {
+  print("  #{entry.seq} {entry.kind} {entry.body.signal}")
+}
