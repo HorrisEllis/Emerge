@@ -22,10 +22,11 @@ jobs:
         node: [18, 22]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
-    env:
-      # cortex write-back logs failures here; keep them out of the checkout
-      NEXUS_DATA_ROOT: ${{ runner.temp }}
     steps:
+      # cortex write-back logs failures under NEXUS_DATA_ROOT; keep them out of the checkout
+      - name: keep logs out of the checkout
+        shell: bash
+        run: echo "NEXUS_DATA_ROOT=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
