@@ -1,0 +1,8 @@
+node_modules/
+
+# files written by `eg gen` / the IDE
+emerge/output/*
+!emerge/output/.gitkeep
+
+# rollback copy kept by `eg bootstrap`
+emerge/lang/build/previous/
