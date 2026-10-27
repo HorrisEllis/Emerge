@@ -40,6 +40,8 @@ node lang/eg.js repl                 # try lines interactively
 npm link                             # optional: makes `eg` a command everywhere (from the emerge/ folder)
 ```
 
+**Editor with autocomplete:** `node lang/eg.js ide` opens a local editor at http://127.0.0.1:4343. Ctrl+Space (or just typing) completes keywords, types and every builtin with its arity, read from the language itself; errors show live with line:col; Ctrl+S saves, Ctrl+Enter runs, and the Test button runs `test` blocks. **Generate .eg** writes a new file into `emerge/output/` (compartment, component with wires, test, module, program) that checks clean. From the shell: `node lang/eg.js gen component Pump` (add a folder to write elsewhere).
+
 Write `.eg` files in any editor. The loop is: edit, then `eg check` for errors with file:line:col, then `eg run` or
 `eg test`. **The map:** [`MAP.md`](MAP.md) lists every keyword, contextual word, type, primitive, builtin (with arity),
 ledger entry kind and axiom, and how the vocabulary of `emerge.spec` lines up with the syntax. `eg map` generates it

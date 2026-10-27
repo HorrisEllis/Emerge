@@ -17,6 +17,9 @@ const USAGE = `emerge ${lang.VERSION} — the Emerge language
   eg check <file.eg> [--json]                                 parse + check; errors and warnings, nothing runs
   eg build <file.eg> [-o outDir] [--standalone]               compile to CommonJS (every used module too)
   eg new <folder>                                             start a project: main.eg with a compartment and a test
+  eg ide [folder] [--port 4343]                               a local editor for .eg files: autocomplete, live errors, run/test,
+                                                              and a Generate button that writes new .eg files
+  eg gen <compartment|component|test|module|program> <Name> [folder]   write a new .eg file into emerge/output (or folder)
   eg map [--out MAP.md]                                       the language map: every keyword, primitive, builtin
   eg repl                                                     interactive; an expression prints its value
   eg components <file.eg> [--out graph.json]                  export components, hooks and wires as loom records,
@@ -203,6 +206,26 @@ function main(argv) {
       const name = path.basename(path.resolve(dir)).replace(/[^A-Za-z0-9_]/g, '_');
       fs.writeFileSync(path.join(dir, 'main.eg'), STARTER(name));
       process.stdout.write(`created ${path.join(dir, 'main.eg')}\n\n  ${process.argv[1] ? 'node ' + path.relative(process.cwd(), process.argv[1]) : 'eg'} run ${path.join(dir, 'main.eg')}\n  ${process.argv[1] ? 'node ' + path.relative(process.cwd(), process.argv[1]) : 'eg'} test ${path.join(dir, 'main.eg')}\n`);
+      return;
+    }
+    case 'ide': {
+      const pi = rest.indexOf('--port');
+      const port = pi !== -1 ? Number(rest[pi + 1]) : 4343;
+      const folder = rest.find((a, i) => !a.startsWith('--') && (pi === -1 || i !== pi + 1));
+      require('./ide').start(folder, port);
+      return;
+    }
+    case 'gen': {
+      // eg gen <compartment|component|test|module|program> <Name> [folder] — write a new .eg file that checks clean
+      const { GENERATORS, OUTPUT } = require('./ide');
+      const [kind, name, folder] = rest;
+      if (!GENERATORS[kind] || !name) die('usage: eg gen <' + Object.keys(GENERATORS).join('|') + '> <Name> [folder]');
+      const dir = folder || OUTPUT;   // default: emerge/output
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, name.toLowerCase().replace(/[^a-z0-9_]/g, '_') + '.eg');
+      if (fs.existsSync(file)) die(`error: ${file} exists`);
+      fs.writeFileSync(file, GENERATORS[kind](name));
+      process.stdout.write(`created ${file}\n`);
       return;
     }
     case 'repl': return repl();
