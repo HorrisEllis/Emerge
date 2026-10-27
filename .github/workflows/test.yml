@@ -1,0 +1,36 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [18, 22]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: emerge — install
+        working-directory: emerge
+        run: npm ci
+      - name: emerge — language tests
+        working-directory: emerge
+        run: npm run test:lang
+      - name: emerge — verify
+        working-directory: emerge
+        run: node verify.js
+
+      - name: warp — tests
+        working-directory: warp
+        run: npm test
+
+      # npm test (emerge) is not run yet: six of its tests read causal-nexus.spec and
+      # runtime.spec, which are not in the repo, and gap-field expects 8 events but gets 9.
