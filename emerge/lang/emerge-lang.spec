@@ -1,9 +1,9 @@
 spec:
   meta:
     name:     emerge-lang
-    version:  1.5.0
+    version:  1.6.0
     date:     2026-10-26
-    changelog: '1.5.0 — buildable: the core primitives and the standard library are Emerge source, rebuilt by eg bootstrap (James: "make it buildable") · 1.4.0 — kinds (schemas for primitives) and templates (spawned at run time), James: "a template or schema for dynamic primitives" · 1.3.0 — components: hooks, shapes, wires, boundary, send, eg components (James: "what about adding the component logic?")'
+    changelog: '1.6.0 — eg map (MAP.md, generated) and eg new (James: "how do i code with it, and where is the map or taxonomy?") · 1.5.0 — buildable: the core primitives and the standard library are Emerge source, rebuilt by eg bootstrap (James: "make it buildable") · 1.4.0 — kinds (schemas for primitives) and templates (spawned at run time), James: "a template or schema for dynamic primitives" · 1.3.0 — components: hooks, shapes, wires, boundary, send, eg components (James: "what about adding the component logic?")'
     uuid:     nexus-emerge-lang-v1-0000-2026-1026-jamesbrooks-001
     supersedes_role_of: [emerge-kernel.js tokenizer/SNR-gate/parse, emerge-codegen-v2.js translateStmt heuristics]
     james:    '"can we finish this into a coding language"'
@@ -28,7 +28,8 @@ spec:
     - { id: modules,     file: emerge/lang/index.js,       does: "public API: compile, check, run, build; module loader for use" }
     - { id: build,       file: emerge/lang/build-loader.js, does: "where the current build lives (EMERGE_BUILD or lang/build/current); the primitives every module reads; the prelude the runtime loads; seed mode for bootstrapping" }
     - { id: bootstrap,   file: emerge/lang/bootstrap.js,  does: "core/*.eg → build/next → prove → build/current (previous kept); rollback; status" }
-    - { id: cli,         file: emerge/lang/eg.js,          does: "eg run | build | check | test | components | repl | ast | tokens" }
+    - { id: map,         file: emerge/lang/map.js,         does: "eg map → lang/MAP.md: every keyword, contextual word, type, primitive, builtin, ledger kind and axiom, read from the source; emerge.spec words shared with the syntax, with the ontology's meaning beside each" }
+    - { id: cli,         file: emerge/lang/eg.js,          does: "eg new | run | build | check | test | components | map | bootstrap | repl | ast | tokens" }
 
   grammar: |
     program     = { item }

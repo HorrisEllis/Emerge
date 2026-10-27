@@ -16,6 +16,8 @@ const USAGE = `emerge ${lang.VERSION} — the Emerge language
   eg test  <file.eg> [--seed N]                               run its test "…" blocks, each in its own whatif fork
   eg check <file.eg> [--json]                                 parse + check; errors and warnings, nothing runs
   eg build <file.eg> [-o outDir] [--standalone]               compile to CommonJS (every used module too)
+  eg new <folder>                                             start a project: main.eg with a compartment and a test
+  eg map [--out MAP.md]                                       the language map: every keyword, primitive, builtin
   eg repl                                                     interactive; an expression prints its value
   eg components <file.eg> [--out graph.json]                  export components, hooks and wires as loom records,
                                                               validated against emerge/schemas/schema.component|hook|wire
@@ -24,6 +26,44 @@ const USAGE = `emerge ${lang.VERSION} — the Emerge language
   eg ast   <file.eg>                                          the checked syntax tree as JSON
   eg tokens <file.eg>                                         the token stream
   eg version
+`;
+
+const STARTER = (name) => `// ${name} — an Emerge program. Run: eg run main.eg · Test: eg test main.eg · Compile: eg build main.eg -o out
+// The language map (every keyword, primitive and builtin): lang/MAP.md · The guide: lang/README.md
+
+compartment Tasks {
+  id = "${name}.tasks"
+  intent = "a list of tasks that can only be finished once"
+  state { open: [], done: [] }
+
+  constraint no_overlap hard { not any(state.done, fn(t) = state.open contains t) }
+
+  on "task.add" (e) {
+    state.open = push(state.open, e.title)
+    emit "task.added" { title: e.title, open: len(state.open) }
+  }
+  on "task.done" (e) {
+    expect state.open contains e.title, "no open task called {e.title}"
+    state.open = filter(state.open, fn(t) = t != e.title)
+    state.done = push(state.done, e.title)
+  }
+
+  fn summary() = "{len(state.open)} open, {len(state.done)} done"
+}
+
+on "task.added" (e) { print("added", e.title, "— open:", e.open) }
+
+emit "task.add" { title: "write the spec" }
+emit "task.add" { title: "build it" }
+emit "task.done" { title: "write the spec" }
+print(Tasks.summary())
+
+test "finishing a task moves it" {
+  emit "task.add" { title: "x" }
+  emit "task.done" { title: "x" }
+  expect Tasks.state.done contains "x"
+  expect not (Tasks.state.open contains "x")
+}
 `;
 
 function die(msg, code = 2) { process.stderr.write(msg.endsWith('\n') ? msg : msg + '\n'); process.exit(code); }
@@ -140,6 +180,29 @@ function main(argv) {
         process.stderr.write(`✗ ${e.message}\n\nthe current build is unchanged; the candidate is in lang/build/next\n`);
         process.exitCode = 1;
       }
+      return;
+    }
+    case 'map': {
+      const m = require('./map');
+      const missing = m.unmapped();
+      if (missing.length) die(`error: the map has no meaning for: ${missing.join(', ')} — add them in lang/map.js`, 1);
+      const text = m.generate();
+      const oi = rest.indexOf('--out');
+      if (oi !== -1) {
+        if (!rest[oi + 1]) die('error: --out needs a path');
+        fs.writeFileSync(rest[oi + 1], text);
+        process.stdout.write(`wrote ${rest[oi + 1]}\n`);
+      } else process.stdout.write(text);
+      return;
+    }
+    case 'new': {
+      const dir = rest[0];
+      if (!dir) die('usage: eg new <folder>');
+      if (fs.existsSync(dir) && fs.readdirSync(dir).length) die(`error: ${dir} is not empty`);
+      fs.mkdirSync(dir, { recursive: true });
+      const name = path.basename(path.resolve(dir)).replace(/[^A-Za-z0-9_]/g, '_');
+      fs.writeFileSync(path.join(dir, 'main.eg'), STARTER(name));
+      process.stdout.write(`created ${path.join(dir, 'main.eg')}\n\n  ${process.argv[1] ? 'node ' + path.relative(process.cwd(), process.argv[1]) : 'eg'} run ${path.join(dir, 'main.eg')}\n  ${process.argv[1] ? 'node ' + path.relative(process.cwd(), process.argv[1]) : 'eg'} test ${path.join(dir, 'main.eg')}\n`);
       return;
     }
     case 'repl': return repl();

@@ -236,6 +236,9 @@ function bootstrap(opts = {}) {
   if (fs.existsSync(current)) fs.renameSync(current, previous);
   fs.renameSync(next, current);
   build.reset();
+  // the map follows the build: lang/MAP.md now describes the primitives and library just integrated
+  fs.writeFileSync(path.join(LANG, 'MAP.md'), require('./map').generate());
+  report.push('MAP.md regenerated');
   fs.rmSync(tmp, { recursive: true, force: true });
   return { ok: true, build: n, checks: report };
 }

@@ -93,6 +93,24 @@ t('eg components writes schema-valid loom records', () => {
   if (g.components.length !== 3 || g.hooks.length !== 7 || g.wires.length !== 4) throw new Error(r.stdout);
 });
 
+t('lang/MAP.md is the map the language generates now, and every keyword has a meaning in it', () => {
+  const m = require('../map');
+  const missing = m.unmapped();
+  if (missing.length) throw new Error(`no meaning in lang/map.js for: ${missing.join(', ')}`);
+  if (fs.readFileSync(path.join(LANG, 'MAP.md'), 'utf8') !== m.generate()) throw new Error('lang/MAP.md is out of date — run: node lang/eg.js map --out lang/MAP.md');
+});
+
+t('eg new makes a project that runs and tests clean', () => {
+  const dir = path.join(TMP, 'newproj');
+  const n = node([EG, 'new', dir]);
+  if (n.status !== 0) throw new Error(n.stderr);
+  const r = node([EG, 'run', path.join(dir, 'main.eg')]);
+  const t2 = node([EG, 'test', path.join(dir, 'main.eg')]);
+  if (r.status !== 0 || !r.stdout.includes('1 open, 1 done') || t2.status !== 0 || !t2.stdout.includes('1 passed, 0 failed')) throw new Error(r.stdout + r.stderr + t2.stdout + t2.stderr);
+  const c = node([EG, 'check', path.join(dir, 'main.eg')]);
+  if (c.stderr.trim()) throw new Error(`the starter should check clean:\n${c.stderr}`);
+});
+
 t('the REPL keeps state between lines', () => {
   const r = spawnSync(process.execPath, [EG, 'repl'], { input: 'var n = 2\nn += 3\nn * 10\n:quit\n', encoding: 'utf8' });
   if (!r.stdout.includes('50')) throw new Error(r.stdout + r.stderr);

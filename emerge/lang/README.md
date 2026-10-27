@@ -25,6 +25,27 @@ node lang/eg.js repl
 
 ---
 
+## Start here
+
+You need node 18 or newer and nothing else (no npm install).
+
+```
+cd emerge
+node lang/eg.js new myproj           # a starter: main.eg with a compartment, a handler, a lens fn and a test
+node lang/eg.js run myproj/main.eg   # run it
+node lang/eg.js test myproj/main.eg  # run its test blocks
+node lang/eg.js check myproj/main.eg # compile-time errors and warnings only
+node lang/eg.js build myproj/main.eg -o myproj/out && node myproj/out/main.js   # compile to JavaScript and run that
+node lang/eg.js repl                 # try lines interactively
+npm link                             # optional: makes `eg` a command everywhere (from the emerge/ folder)
+```
+
+Write `.eg` files in any editor. The loop is: edit, then `eg check` for errors with file:line:col, then `eg run` or
+`eg test`. **The map:** [`MAP.md`](MAP.md) lists every keyword, contextual word, type, primitive, builtin (with arity),
+ledger entry kind and axiom, and how the vocabulary of `emerge.spec` lines up with the syntax. `eg map` generates it
+from the source, so it is never out of date. **Examples:** `examples/`, one per feature, from `hello.eg` to
+`primitives.eg`.
+
 ## Changing the language itself (0 tokens)
 
 The core rules and the standard library are Emerge source in `lang/core/`. The toolchain builds itself from them.
@@ -299,6 +320,7 @@ the seed; and the two file builtins.
 | `interpreter.js` | walks the AST against the runtime |
 | `emitter.js` | AST → CommonJS against the same runtime |
 | `build-loader.js` | where the build lives (`EMERGE_BUILD` or `build/current`); hands the primitives and prelude to everything else |
+| `map.js` | `eg map`: generates MAP.md from the source |
 | `bootstrap.js` | `eg bootstrap`: quarantine → prove → integrate, rollback, status |
 | `core/*.eg` | the language's own primitives, standard library and selftest |
 | `index.js` | API: `compileSource`, `runFile`, `buildFile` |

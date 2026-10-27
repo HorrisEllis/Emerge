@@ -1011,7 +1011,7 @@ function createRuntime(opts = {}) {
   const preludeFile = opts.prelude === false ? null : build.preludePath();
   if (preludeFile) {
     const exportsMap = require(preludeFile)(rt);
-    for (const name of Object.keys(exportsMap)) if (!name.startsWith('_') && isFn(exportsMap[name])) B[name] = exportsMap[name];
+    for (const name of Object.keys(exportsMap)) if (!name.startsWith('_') && isFn(exportsMap[name])) { exportsMap[name].__eg.prelude = true; B[name] = exportsMap[name]; }
     rt.file = opts.file || '<input>';
     rt.line = 0;
   }
