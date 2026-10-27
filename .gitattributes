@@ -1,0 +1,4 @@
+# Keep LF everywhere: emerge hashes its core sources and compares generated files byte for byte,
+# so a CRLF checkout (git on Windows) would otherwise look like changed sources.
+* text=auto eol=lf
+*.zip binary

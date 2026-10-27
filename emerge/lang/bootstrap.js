@@ -25,6 +25,7 @@ const CORE = path.join(LANG, 'core');
 const BUILD = path.join(LANG, 'build');
 const SOURCES = ['primitives.eg', 'prelude.eg', 'selftest.eg'];
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+const srcSha = (text) => sha(text.replace(/\r\n/g, '\n'));   // a CRLF checkout (git on Windows) is the same source
 
 // ── the shape primitives.eg must have (structure only — every value lives in the .eg file) ──────────────────────────
 const SEVERITIES = ['error', 'warning', 'off'];
@@ -224,7 +225,7 @@ function bootstrap(opts = {}) {
   const manifest = {
     emerge: VERSION,
     build: n,
-    sources: Object.fromEntries(SOURCES.map(f => [`core/${f}`, sha(srcs[f])])),
+    sources: Object.fromEntries(SOURCES.map(f => [`core/${f}`, srcSha(srcs[f])])),
     outputs: Object.fromEntries(['primitives.json', 'prelude.js'].map(f => [f, sha(fs.readFileSync(path.join(next, f)))])),
     prelude_builtins: preludeNames,
     replaces_natives: replaced,
@@ -262,7 +263,7 @@ function status() {
   const changed = [];
   for (const f of SOURCES) {
     const p = path.join(CORE, f);
-    if (!fs.existsSync(p) || sha(fs.readFileSync(p, 'utf8')) !== m.sources[`core/${f}`]) changed.push(`core/${f}`);
+    if (!fs.existsSync(p) || srcSha(fs.readFileSync(p, 'utf8')) !== m.sources[`core/${f}`]) changed.push(`core/${f}`);
   }
   return { build: m.build, changed, manifest: m };
 }

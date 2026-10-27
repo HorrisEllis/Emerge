@@ -97,7 +97,7 @@ t('lang/MAP.md is the map the language generates now, and every keyword has a me
   const m = require('../map');
   const missing = m.unmapped();
   if (missing.length) throw new Error(`no meaning in lang/map.js for: ${missing.join(', ')}`);
-  if (fs.readFileSync(path.join(LANG, 'MAP.md'), 'utf8') !== m.generate()) throw new Error('lang/MAP.md is out of date — run: node lang/eg.js map --out lang/MAP.md');
+  if (fs.readFileSync(path.join(LANG, 'MAP.md'), 'utf8').replace(/\r\n/g, '\n') !== m.generate()) throw new Error('lang/MAP.md is out of date — run: node lang/eg.js map --out lang/MAP.md');
 });
 
 t('eg new makes a project that runs and tests clean', () => {
