@@ -29,7 +29,7 @@ function compileSource(src, file = '<input>') {
 
 const fmtDiag = (d, level) => `${d.file}:${d.line}:${d.col}: ${level}: ${d.message}`;
 
-function displayName(abs, root) { return path.relative(root, abs) || path.basename(abs); }
+function displayName(abs, root) { return (path.relative(root, abs) || path.basename(abs)).split(path.sep).join('/'); } // always '/', so messages match on Windows
 
 /** compile a file or throw the first error as an EmergeSyntaxError */
 function compileOrThrow(abs, root) {
@@ -126,7 +126,7 @@ function buildFile(mainPath, outDir, opts = {}) {
     const dest = path.join(out, rel);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     let req = path.relative(path.dirname(dest), runtimeAbs).split(path.sep).join('/');
-    if (!req.startsWith('.')) req = './' + req;
+    if (!path.isAbsolute(req) && !/^[A-Za-z]:/.test(req) && !req.startsWith('.')) req = './' + req; // cross-drive on Windows: path.relative returns an absolute path
     fs.writeFileSync(dest, emitProgram(m.program, { file: m.file, runtimeRequire: req }));
     files.push(dest);
     warnings.push(...m.warnings);

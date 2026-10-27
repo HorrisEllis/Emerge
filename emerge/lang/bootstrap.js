@@ -178,7 +178,7 @@ function bootstrap(opts = {}) {
     const bad = r.program.items.filter(i => i.type !== 'FnDecl' && i.type !== 'Let');
     if (bad.length) throw fail('QUARANTINE prelude.eg', bad.map(i => `prelude.eg:${i.line}: the prelude holds fn declarations and lets only (found ${i.type})`), report);
     let req = path.relative(next, path.join(LANG, 'runtime.js')).split(path.sep).join('/');
-    if (!req.startsWith('.')) req = './' + req;
+    if (!path.isAbsolute(req) && !/^[A-Za-z]:/.test(req) && !req.startsWith('.')) req = './' + req; // cross-drive on Windows: path.relative returns an absolute path
     const out = path.join(next, 'prelude.js');
     fs.writeFileSync(out, emitProgram(r.program, { file: '<prelude>', runtimeRequire: req }));
     // it must load
