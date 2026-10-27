@@ -46,6 +46,16 @@ ledger entry kind and axiom, and how the vocabulary of `emerge.spec` lines up wi
 from the source, so it is never out of date. **Examples:** `examples/`, one per feature, from `hello.eg` to
 `primitives.eg`.
 
+## Native output (CIE-EG §10, in progress)
+
+`lang/native/` holds the start of the native back end, written in Emerge: `x64.eg` (an x86-64 encoder and two-pass
+assembler), `pe.eg` (a Windows PE32+ writer) and `elf.eg` (a Linux ELF64 writer). `milestone.eg` is §10.3: an Emerge
+program that writes `hello.exe` and `hello` byte by byte. Both ran and printed `hello from emerge` (the `.exe` under
+Wine 9). A compiler from Emerge programs to native code (`eg native`) is not built yet.
+
+Bytes and bit operations (§3): `bytes(…)`, `0xFF`/`0b1010`, `& | ^ ~ << >>` on 32-bit words, `rotl rotr idiv`,
+`u8 u16le u32le u64le i32le`, `hex from_hex utf8 byte_len sha256 read_bytes write_bytes`.
+
 ## Changing the language itself (0 tokens)
 
 The core rules and the standard library are Emerge source in `lang/core/`. The toolchain builds itself from them.

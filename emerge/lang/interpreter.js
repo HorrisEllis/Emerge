@@ -64,7 +64,7 @@ function createInterpreter(rt, file) {
       case 'Index': { const o = ev(e.obj, env); return $.index(o, ev(e.index, env)); }
       case 'Unary': {
         const v = ev(e.expr, env);
-        return e.op === 'not' ? $.not(v) : $.neg(v);
+        return e.op === 'not' ? $.not(v) : e.op === '~' ? $.bnot(v) : $.neg(v);
       }
       case 'Logical': {
         const l = ev(e.l, env);
@@ -100,6 +100,11 @@ function createInterpreter(rt, file) {
       case '!=': return $.neq(l, r);
       case '<': case '<=': case '>': case '>=': return $.cmp(op, l, r);
       case '..': return $.range(l, r);
+      case '&': return $.band(l, r);
+      case '|': return $.bor(l, r);
+      case '^': return $.bxor(l, r);
+      case '<<': return $.shl(l, r);
+      case '>>': return $.shr(l, r);
       case 'contains': return $.contains(l, r);
       case 'in': return $.isIn(l, r);
       case 'starts_with': return $.startsWith(l, r);

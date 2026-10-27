@@ -10,7 +10,7 @@ const J = JSON.stringify;
 const v = name => `v_${name}`;
 const COMPOUND = { '+=': 'add', '-=': 'sub', '*=': 'mul', '/=': 'div' };
 const BINOP = {
-  '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', '%': 'mod', '**': 'pow', '==': 'eq', '!=': 'neq', '..': 'range',
+  '+': 'add', '-': 'sub', '*': 'mul', '/': 'div', '%': 'mod', '**': 'pow', '==': 'eq', '!=': 'neq', '..': 'range', '&': 'band', '|': 'bor', '^': 'bxor', '<<': 'shl', '>>': 'shr',
   contains: 'contains', in: 'isIn', starts_with: 'startsWith', ends_with: 'endsWith', matches: 'matches',
 };
 
@@ -44,7 +44,7 @@ function emitProgram(program, { file, runtimeRequire }) {
       case 'State': return '$state';
       case 'Member': return `$.get(${ex(e.obj)}, ${J(e.name)})`;
       case 'Index': return `$.index(${ex(e.obj)}, ${ex(e.index)})`;
-      case 'Unary': return e.op === 'not' ? `$.not(${ex(e.expr)})` : `$.neg(${ex(e.expr)})`;
+      case 'Unary': return e.op === 'not' ? `$.not(${ex(e.expr)})` : e.op === '~' ? `$.bnot(${ex(e.expr)})` : `$.neg(${ex(e.expr)})`;
       case 'Logical': return `$.${e.op}(${ex(e.l)}, () => ${ex(e.r)})`;
       case 'Coalesce': return `$.coalesce(${ex(e.l)}, () => ${ex(e.r)})`;
       case 'Binary':

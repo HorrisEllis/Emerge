@@ -1,0 +1,92 @@
+// lang/native/x64.eg — an x86-64 encoder and a two-pass assembler, in Emerge (CIE-EG §10.2).
+// An instruction is a list of byte ints. A program is a list of items:
+//   [bytes…]          raw bytes
+//   { label: "n" }    a position
+//   { rel32: "n" }    4 bytes: target − (address after these 4 bytes). Used by call, jmp, jcc and [rip+disp].
+// Every reference is 4 bytes wide, so one pass finds every label and the second writes the bytes.
+
+// ── little-endian ────────────────────────────────────────────────────────────
+fn le16(n) = [n & 0xFF, (n >> 8) & 0xFF]
+fn le32(n) {
+  let w = n & 0xFFFFFFFF
+  return [w & 0xFF, (w >> 8) & 0xFF, (w >> 16) & 0xFF, (w >> 24) & 0xFF]
+}
+fn le64(n) {
+  if n >= 0 { return le32(n % 4294967296) + le32(idiv(n, 4294967296)) }
+  if n < -2147483648 { raise("le64: negatives below -2^31 are not encodable yet") }
+  return le32(n) + [0xFF, 0xFF, 0xFF, 0xFF]
+}
+
+// ── registers ────────────────────────────────────────────────────────────────
+let RAX = 0
+let RCX = 1
+let RDX = 2
+let RBX = 3
+let RSP = 4
+let RBP = 5
+let RSI = 6
+let RDI = 7
+
+// ── instructions (only what the code generator uses) ─────────────────────────
+fn mov_imm(reg, n) = [0x48, 0xB8 + reg] + le64(n)              // mov r64, imm64
+fn mov_imm32(reg, n) = [0x48, 0xC7, 0xC0 + reg] + le32(n)      // mov r64, imm32 (sign-extended)
+fn load_rbp(disp) = [0x48, 0x8B, 0x85] + le32(disp)            // mov rax, [rbp+disp32]
+fn store_rbp(disp) = [0x48, 0x89, 0x85] + le32(disp)           // mov [rbp+disp32], rax
+fn push(reg) = [0x50 + reg]
+fn pop(reg) = [0x58 + reg]
+fn mov_rcx_rax() = [0x48, 0x89, 0xC1]
+fn mov_rbp_rsp() = [0x48, 0x89, 0xE5]
+fn mov_rsp_rbp() = [0x48, 0x89, 0xEC]
+fn sub_rsp(n) = [0x48, 0x81, 0xEC] + le32(n)
+fn add_rsp(n) = [0x48, 0x81, 0xC4] + le32(n)
+fn and_rsp_16() = [0x48, 0x83, 0xE4, 0xF0]
+fn add_rax_rcx() = [0x48, 0x01, 0xC8]
+fn sub_rax_rcx() = [0x48, 0x29, 0xC8]
+fn imul_rax_rcx() = [0x48, 0x0F, 0xAF, 0xC1]
+fn cqo() = [0x48, 0x99]
+fn idiv_rcx() = [0x48, 0xF7, 0xF9]
+fn neg_rax() = [0x48, 0xF7, 0xD8]
+fn xor_rax_1() = [0x48, 0x83, 0xF0, 0x01]
+fn cmp_rax_rcx() = [0x48, 0x39, 0xC8]
+fn test_rax() = [0x48, 0x85, 0xC0]
+fn test_rcx() = [0x48, 0x85, 0xC9]
+fn test_rdx() = [0x48, 0x85, 0xD2]
+fn movzx_rax_al() = [0x0F, 0xB6, 0xC0]
+fn ret() = [0xC3]
+fn syscall() = [0x0F, 0x05]
+
+let CC = { eq: 0x4, ne: 0x5, lt: 0xC, ge: 0xD, le: 0xE, gt: 0xF, o: 0x0, s: 0x8, ns: 0x9 }
+fn setcc(cc) = [0x0F, 0x90 + CC[cc], 0xC0]                      // setcc al
+fn jcc(cc) = [0x0F, 0x80 + CC[cc]]                              // + { rel32 }
+fn jmp() = [0xE9]                                                // + { rel32 }
+fn call() = [0xE8]                                               // + { rel32 }
+fn call_rip() = [0xFF, 0x15]                                     // call [rip+disp32] — an import slot
+fn lea_rsi_rip() = [0x48, 0x8D, 0x35]                            // lea rsi, [rip+disp32]
+
+// ── the assembler ────────────────────────────────────────────────────────────
+fn assemble(items, base, externs) {
+  var at = {}
+  var off = 0
+  for it in items {
+    if type_of(it) == "list" { off += len(it) }
+    else if has(it, "label") {
+      if has(at, it.label) or has(externs, it.label) { raise("assembler: label {it.label} is defined twice") }
+      at[it.label] = base + off
+    } else if has(it, "rel32") { off += 4 }
+    else { raise("assembler: unknown item {repr(it)}") }
+  }
+  var out = []
+  var pos = 0
+  for it in items {
+    if type_of(it) == "list" {
+      out[len(out)] = it
+      pos += len(it)
+    } else if has(it, "rel32") {
+      let target = get(at, it.rel32, get(externs, it.rel32))
+      if target == null { raise("assembler: no label {it.rel32}") }
+      pos += 4
+      out[len(out)] = le32(target - (base + pos))
+    }
+  }
+  return { code: bytes(out), labels: at, size: pos }
+}

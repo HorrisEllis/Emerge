@@ -6,7 +6,7 @@
 const { lex } = require('./lexer');
 const { EmergeSyntaxError } = require('./errors');
 
-const TYPES = new Set(['int', 'float', 'num', 'string', 'bool', 'list', 'map', 'fn', 'any']);
+const TYPES = new Set(['int', 'float', 'num', 'string', 'bool', 'list', 'map', 'bytes', 'fn', 'any']);
 const build = require('./build-loader');
 // constraint type words come from primitives.eg (constraint_types)
 const isCtype = (w) => Object.prototype.hasOwnProperty.call(build.primitives().constraint_types, w);
@@ -598,21 +598,26 @@ class Parser {
   }
 
   parseRange() {
-    const l = this.parseAdd();
+    const l = this.parseBitOr();
     if (this.isOp('..')) {
       const op = this.next();
-      return this.node('Binary', op, { op: '..', l, r: this.parseAdd() });
+      return this.node('Binary', op, { op: '..', l, r: this.parseBitOr() });
     }
     return l;
   }
 
+  // bit operators (Python's order): | below ^ below & below << >>, all above comparison and .. and below + -
+  parseBitOr() { return this.binaryLevel(() => this.parseBitXor(), ['|']); }
+  parseBitXor() { return this.binaryLevel(() => this.parseBitAnd(), ['^']); }
+  parseBitAnd() { return this.binaryLevel(() => this.parseShift(), ['&']); }
+  parseShift() { return this.binaryLevel(() => this.parseAdd(), ['<<', '>>']); }
   parseAdd() { return this.binaryLevel(() => this.parseMul(), ['+', '-']); }
   parseMul() { return this.binaryLevel(() => this.parseUnary(), ['*', '/', '%']); }
 
   parseUnary() {
-    if (this.isOp('-')) {
+    if (this.isOp('-') || this.isOp('~')) {
       const t = this.next();
-      return this.node('Unary', t, { op: '-', expr: this.parseUnary() });
+      return this.node('Unary', t, { op: t.v, expr: this.parseUnary() });
     }
     return this.parsePow();
   }

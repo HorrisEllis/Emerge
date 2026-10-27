@@ -1,0 +1,98 @@
+// lang/native/pe.eg — a Windows PE32+ (x86-64, console) writer, in Emerge (CIE-EG §10.2).
+// Layout: headers · .idata (imports from one DLL) at RVA 0x1000 · .text after it. No relocations: every reference in
+// the code is RIP-relative, and the image asks for its preferred base. No timestamp, so one input gives one file.
+use "./x64.eg" as x
+
+let IMAGE_BASE = 0x140000000
+let SECTION_ALIGN = 0x1000
+let FILE_ALIGN = 0x200
+
+fn align(n, a) = idiv(n + a - 1, a) * a
+fn pad(n) {
+  var z = []
+  for i in 0..n { z[len(z)] = 0 }
+  return z
+}
+fn name8(s) = bytes(s) + bytes(pad(8 - byte_len(s)))
+
+/** the .idata blob for one DLL; slots: import name → VA of its IAT slot */
+fn idata(dll, names, rva) {
+  let n = len(names)
+  let desc_size = 40                        // one descriptor + the null one
+  let ilt_off = desc_size
+  let iat_off = ilt_off + (n + 1) * 8
+  let hint_off = iat_off + (n + 1) * 8
+  var hints = []
+  var hint_rvas = []
+  var at = 0                                 // byte offset inside the hint/name table
+  for name in names {
+    hint_rvas = push(hint_rvas, rva + hint_off + at)
+    var entry = [0, 0, bytes(name), 0]       // hint 0, the name, its terminator
+    var size = 2 + byte_len(name) + 1
+    if size % 2 == 1 {                       // each entry starts on an even address
+      entry = push(entry, 0)
+      size += 1
+    }
+    hints = push(hints, bytes(entry))
+    at += size
+  }
+  let hint_blob = bytes(hints)
+  let dll_off = hint_off + len(hint_blob)
+  var thunks = []
+  for r in hint_rvas { thunks = push(thunks, x.le64(r)) }
+  thunks = push(thunks, x.le64(0))
+  var slots = {}
+  for i, name in names { slots[name] = IMAGE_BASE + rva + iat_off + i * 8 }
+  let blob = bytes([
+    x.le32(rva + ilt_off), x.le32(0), x.le32(0), x.le32(rva + dll_off), x.le32(rva + iat_off),
+    pad(20),
+    thunks, thunks,
+    hint_blob,
+    bytes(dll), 0
+  ])
+  return { blob: blob, slots: slots, iat_rva: rva + iat_off, iat_size: (n + 1) * 8 }
+}
+
+/** pe(items, entry_label, dll, imports) → bytes of a runnable .exe */
+fn pe(items, entry, dll, imports) {
+  let idata_rva = SECTION_ALIGN
+  let imp = idata(dll, imports, idata_rva)
+  let idata_len = len(imp.blob)
+  let text_rva = idata_rva + align(idata_len, SECTION_ALIGN)
+  let asm = x.assemble(items, IMAGE_BASE + text_rva, imp.slots)
+  let text = asm.code
+  let headers_size = FILE_ALIGN
+  let idata_raw = align(idata_len, FILE_ALIGN)
+  let text_raw = align(len(text), FILE_ALIGN)
+  let image_size = text_rva + align(len(text), SECTION_ALIGN)
+  var dirs = []
+  for i in 0..16 {
+    if i == 1 { dirs = push(dirs, [x.le32(idata_rva), x.le32(40)]) }
+    else if i == 12 { dirs = push(dirs, [x.le32(imp.iat_rva), x.le32(imp.iat_size)]) }
+    else { dirs = push(dirs, [x.le32(0), x.le32(0)]) }
+  }
+  let dos = bytes([0x4D, 0x5A, pad(0x3C - 2), x.le32(0x40)])
+  let coff = [0x50, 0x45, 0, 0, x.le16(0x8664), x.le16(2), x.le32(0), x.le32(0), x.le32(0), x.le16(240), x.le16(0x0023)]
+  let opt = [
+    x.le16(0x20B), 14, 0,
+    x.le32(text_raw), x.le32(idata_raw), x.le32(0),
+    x.le32(text_rva + asm.labels[entry] - (IMAGE_BASE + text_rva)), x.le32(text_rva),
+    x.le64(IMAGE_BASE), x.le32(SECTION_ALIGN), x.le32(FILE_ALIGN),
+    x.le16(6), x.le16(0), x.le16(0), x.le16(0), x.le16(6), x.le16(0), x.le32(0),
+    x.le32(image_size), x.le32(headers_size), x.le32(0), x.le16(3), x.le16(0x8100),
+    x.le64(0x100000), x.le64(0x1000), x.le64(0x100000), x.le64(0x1000),
+    x.le32(0), x.le32(16),
+    dirs
+  ]
+  let sections = [
+    name8(".idata"), x.le32(idata_len), x.le32(idata_rva), x.le32(idata_raw), x.le32(headers_size), x.le32(0), x.le32(0), x.le16(0), x.le16(0), x.le32(0xC0000040),
+    name8(".text"), x.le32(len(text)), x.le32(text_rva), x.le32(text_raw), x.le32(headers_size + idata_raw), x.le32(0), x.le32(0), x.le16(0), x.le16(0), x.le32(0x60000020)
+  ]
+  let head = bytes([dos, coff, opt, sections])
+  if len(head) > headers_size { raise("pe: headers are {len(head)} bytes, more than {headers_size}") }
+  return bytes([
+    head, pad(headers_size - len(head)),
+    imp.blob, pad(idata_raw - idata_len),
+    text, pad(text_raw - len(text))
+  ])
+}

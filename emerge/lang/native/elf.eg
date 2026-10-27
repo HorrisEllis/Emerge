@@ -1,0 +1,22 @@
+// lang/native/elf.eg — a Linux ELF64 (x86-64) executable writer, in Emerge.
+// One read+execute segment holding the headers and the code. No libc, no dynamic linker: the code talks to the kernel.
+use "./x64.eg" as x
+
+let BASE = 0x400000
+let HEADERS = 64 + 56
+
+fn elf(items, entry) {
+  let asm = x.assemble(items, BASE + HEADERS, {})
+  let total = HEADERS + len(asm.code)
+  let ident = [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  let header = [
+    ident, x.le16(2), x.le16(0x3E), x.le32(1),
+    x.le64(asm.labels[entry]), x.le64(64), x.le64(0),
+    x.le32(0), x.le16(64), x.le16(56), x.le16(1), x.le16(64), x.le16(0), x.le16(0)
+  ]
+  let phdr = [
+    x.le32(1), x.le32(5), x.le64(0), x.le64(BASE), x.le64(BASE),
+    x.le64(total), x.le64(total), x.le64(0x1000)
+  ]
+  return bytes([header, phdr, asm.code])
+}

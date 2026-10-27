@@ -37,7 +37,7 @@ spec:
     - id: ide-server
       description: "HTTP server for Emerge IDE. Proxied through orchestrator."
     - id: lang
-      description: "The Emerge language (1.6.0 — components, kinds, templates; buildable from lang/core via eg bootstrap): grammar, checker, runtime, interpreter, CommonJS emitter, eg CLI. Contract: emerge/lang/emerge-lang.spec. Proof: npm run test:lang."
+      description: "The Emerge language (1.7.0 — components, kinds, templates; buildable from lang/core via eg bootstrap): grammar, checker, runtime, interpreter, CommonJS emitter, eg CLI. Contract: emerge/lang/emerge-lang.spec. Proof: npm run test:lang."
 
   # 🔴 Previous version listed emerge.run / emerge.validate at
   # /api/emerge/run and /api/emerge/validate — neither exists in

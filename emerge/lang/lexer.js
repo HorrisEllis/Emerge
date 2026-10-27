@@ -17,7 +17,7 @@ const KEYWORDS = new Set([
 ]);
 
 // longest first
-const OPS = ['->', '**', '..', '|>', '??', '==', '!=', '<=', '>=', '+=', '-=', '*=', '/=',
+const OPS = ['->', '**', '..', '|>', '??', '==', '!=', '<<', '>>', '<=', '>=', '+=', '-=', '*=', '/=', '&', '|', '^', '~',
   '(', ')', '[', ']', '{', '}', ',', '.', ':', ';', '=', '<', '>', '+', '-', '*', '/', '%', '?'];
 
 const ESCAPES = { n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\', '{': '{', '}': '}', '0': '\0' };
@@ -53,6 +53,19 @@ function lex(src, file = '<input>', startLine = 1, startCol = 1) {
       adv(2); continue;
     }
 
+    if (ch === '0' && /[xXbB]/.test(src[i + 1] || '')) {      // 0xFF · 0b1010 (underscores allowed)
+      const l = line, c = col, s = i;
+      const hexa = /[xX]/.test(src[i + 1]);
+      adv(2);
+      const digit = hexa ? /[0-9a-fA-F_]/ : /[01_]/;
+      while (digit.test(src[i] || '')) adv();
+      const body = src.slice(s + 2, i).replace(/_/g, '');
+      if (!body || /[A-Za-z0-9_]/.test(src[i] || '')) err(`malformed ${hexa ? 'hex' : 'binary'} number "${src.slice(s, i + 1)}"`, l, c);
+      const n = parseInt(body, hexa ? 16 : 2);
+      if (!Number.isSafeInteger(n)) err(`number ${src.slice(s, i)} is larger than 2^53 and cannot be exact`, l, c);
+      push('NUM', n, l, c);
+      continue;
+    }
     if (/[0-9]/.test(ch)) {
       const l = line, c = col, s = i;
       while (/[0-9_]/.test(src[i] || '')) adv();

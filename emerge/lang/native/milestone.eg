@@ -1,0 +1,30 @@
+// lang/native/milestone.eg — CIE-EG §10.3: an Emerge program writes hello.exe (Windows) and hello (Linux). Run from lang/native: eg run milestone.eg
+use "./x64.eg" as x
+use "./pe.eg" as pe
+use "./elf.eg" as elf
+
+let msg = "hello from emerge\n"
+let linux = [
+  { label: "_start" },
+  x.mov_imm32(x.RDI, 1), x.lea_rsi_rip(), { rel32: "msg" }, x.mov_imm32(x.RDX, byte_len(msg)), x.mov_imm32(x.RAX, 1), x.syscall(),
+  x.mov_imm32(x.RDI, 0), x.mov_imm32(x.RAX, 60), x.syscall(),
+  { label: "msg" }, [bytes(msg)]
+]
+write_bytes("hello", elf.elf(linux, "_start"))
+chmod_exec("hello")
+
+let win = [
+  { label: "start" },
+  x.sub_rsp(56),
+  x.mov_imm32(x.RCX, -11), x.call_rip(), { rel32: "GetStdHandle" },
+  [0x48, 0x89, 0xC1],                                      // mov rcx, rax
+  [0x48, 0x8D, 0x15], { rel32: "msg" },                    // lea rdx, [rip+msg]
+  [0x41, 0xB8] + x.le32(byte_len(msg)),                    // mov r8d, len
+  [0x4C, 0x8D, 0x4C, 0x24, 0x28],                          // lea r9, [rsp+40]
+  [0x48, 0xC7, 0x44, 0x24, 0x20, 0, 0, 0, 0],              // mov qword [rsp+32], 0
+  x.call_rip(), { rel32: "WriteFile" },
+  [0x31, 0xC9], x.call_rip(), { rel32: "ExitProcess" },
+  { label: "msg" }, [bytes(msg)]
+]
+write_bytes("hello.exe", pe.pe(win, "start", "KERNEL32.dll", ["GetStdHandle", "WriteFile", "ExitProcess"]))
+print("written")

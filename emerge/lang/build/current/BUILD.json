@@ -1,5 +1,5 @@
 {
-  "emerge": "1.6.0",
+  "emerge": "1.7.0",
   "build": 1,
   "sources": {
     "core/primitives.eg": "b293032dcefd718509e38b28943ecdff6c9d682de68a6295fcd9989ecfb41c27",
@@ -8,7 +8,7 @@
   },
   "outputs": {
     "primitives.json": "3b0acb7490c80e96032bf570724e2f3b92bb26b0c3710c4708f3c3bf8f01e49c",
-    "prelude.js": "f613f9e014b7be2d5c6f8cd72ec45dbe353f8c5ef6a9fd337389e3c809cd9b81"
+    "prelude.js": "47e5300a6547044acd3de4be20c4b630b52d407a20a02c66898c77543bcee84c"
   },
   "prelude_builtins": [
     "map",

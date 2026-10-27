@@ -26,8 +26,12 @@ class Compartment {
 class EModule {
   constructor(name, exports) { this.name = name; this.exports = exports; }
 }
+/** bytes — an immutable byte sequence (CIE-EG §3). Indexing gives a num 0..255. */
+class EBytes {
+  constructor(u8) { this.b = u8; Object.freeze(this); }
+}
 
-const isMap = v => v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Compartment) && !(v instanceof EModule);
+const isMap = v => v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Compartment) && !(v instanceof EModule) && !(v instanceof EBytes);
 const isFn = v => typeof v === 'function' && !!v.__eg;
 const mkMap = () => Object.create(null);
 
@@ -40,6 +44,7 @@ function typeOf(v) {
   if (isFn(v)) return 'fn';
   if (v instanceof Compartment) return 'compartment';
   if (v instanceof EModule) return 'module';
+  if (v instanceof EBytes) return 'bytes';
   if (isMap(v)) return 'map';
   return 'unknown';
 }
@@ -68,6 +73,7 @@ function eq(a, b) {
     for (let i = 0; i < a.length; i++) if (!eq(a[i], b[i])) return false;
     return true;
   }
+  if (a instanceof EBytes) return b instanceof EBytes && Buffer.compare(Buffer.from(a.b), Buffer.from(b.b)) === 0;
   if (isMap(a)) {
     if (!isMap(b)) return false;
     const ka = Object.keys(a), kb = Object.keys(b);
@@ -89,6 +95,7 @@ function show(v, nested = false) {
   if (isFn(v)) return `<fn ${v.__eg.name}>`;
   if (v instanceof Compartment) return `<${v.isComponent ? 'component' : 'compartment'} ${v.name}>`;
   if (v instanceof EModule) return `<module ${v.name}>`;
+  if (v instanceof EBytes) return `<bytes ${v.b.length}${v.b.length ? ': ' + Buffer.from(v.b.subarray(0, 16)).toString('hex') + (v.b.length > 16 ? '…' : '') : ''}>`;
   if (isMap(v)) {
     const ks = Object.keys(v);
     if (!ks.length) return '{}';
@@ -193,6 +200,7 @@ function createRuntime(opts = {}) {
       case 'string': ok = typeof v === 'string'; break;
       case 'bool': ok = typeof v === 'boolean'; break;
       case 'list': ok = Array.isArray(v); break;
+      case 'bytes': ok = v instanceof EBytes; break;
       case 'map': ok = isMap(v); break;
       case 'fn': ok = isFn(v); break;
       case 'any': ok = true; break;
@@ -220,6 +228,7 @@ function createRuntime(opts = {}) {
     if (typeof a === 'number' && typeof b === 'number') return a + b;
     if (typeof a === 'string') return a + show(b);
     if (Array.isArray(a) && Array.isArray(b)) return a.concat(b);
+    if (a instanceof EBytes && b instanceof EBytes) return new EBytes(Buffer.concat([a.b, b.b]));
     if (isMap(a) && isMap(b)) { const m = mkMap(); Object.assign(m, a, b); return m; }
     err(`+ cannot combine ${typeOf(a)} and ${typeOf(b)}`);
   };
@@ -234,6 +243,19 @@ function createRuntime(opts = {}) {
   rt.div = (a, b) => { num2('/', a, b); if (b === 0) err('division by zero'); return a / b; };
   rt.mod = (a, b) => { num2('%', a, b); if (b === 0) err('modulo by zero'); return ((a % b) + b) % b; };
   rt.pow = (a, b) => { num2('**', a, b); return a ** b; };
+  // ── bit operations on 32-bit words (CIE-EG §3, for now): ints in [-2^31, 2^32); negatives are two's complement;
+  //    every result is an unsigned word in [0, 2^32). Shift counts are 0..31.
+  const word = (v, op) => {
+    if (!Number.isInteger(v) || v < -2147483648 || v > 4294967295) err(`${op} works on 32-bit words: an int in [-2^31, 2^32), got ${show(v, true)}`);
+    return v >>> 0;
+  };
+  const count = (n, op) => { if (!Number.isInteger(n) || n < 0 || n > 31) err(`${op} needs a shift count in 0..31, got ${show(n, true)}`); return n; };
+  rt.band = (a, b) => (word(a, '&') & word(b, '&')) >>> 0;
+  rt.bor = (a, b) => (word(a, '|') | word(b, '|')) >>> 0;
+  rt.bxor = (a, b) => (word(a, '^') ^ word(b, '^')) >>> 0;
+  rt.bnot = a => (~word(a, '~')) >>> 0;
+  rt.shl = (a, n) => (word(a, '<<') << count(n, '<<')) >>> 0;
+  rt.shr = (a, n) => word(a, '>>') >>> count(n, '>>');
   rt.neg = a => { if (typeof a !== 'number') err(`unary - needs a num, got ${typeOf(a)}`); return -a; };
   rt.eq = (a, b) => eq(a, b);
   rt.neq = (a, b) => !eq(a, b);
@@ -285,6 +307,12 @@ function createRuntime(opts = {}) {
     err(`${typeOf(o)} has no member .${name}`);
   };
   rt.index = (o, i) => {
+    if (o instanceof EBytes) {
+      if (!Number.isInteger(i)) err(`bytes index must be an int, got ${typeOf(i)}`);
+      const j = i < 0 ? o.b.length + i : i;
+      if (j < 0 || j >= o.b.length) err(`index ${i} is out of range for bytes of ${o.b.length}`);
+      return o.b[j];
+    }
     if (Array.isArray(o)) {
       if (!Number.isInteger(i)) err(`list index must be an int, got ${typeOf(i)}`);
       const j = i < 0 ? o.length + i : i;
@@ -329,6 +357,7 @@ function createRuntime(opts = {}) {
     err(`${typeOf(o)} cannot be indexed for assignment`);
   };
   rt.iter = (v, two) => {
+    if (v instanceof EBytes) return two ? [...v.b].map((x, i) => [i, x]) : [...v.b];
     if (Array.isArray(v)) return two ? v.map((x, i) => [i, x]) : v.slice();
     if (isMap(v)) return two ? Object.keys(v).map(k => [k, v[k]]) : Object.keys(v);
     if (typeof v === 'string') return two ? [...v].map((c, i) => [i, c]) : [...v];
@@ -357,6 +386,7 @@ function createRuntime(opts = {}) {
   rt.world = W;
 
   const toData = (v, what) => {
+    if (v instanceof EBytes) return Buffer.from(v.b).toString('hex');
     if (v === null || v === undefined || typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v === undefined ? null : v;
     if (Array.isArray(v)) return v.map(x => toData(x, what));
     if (isMap(v)) { const m = mkMap(); for (const k of Object.keys(v)) m[k] = toData(v[k], what); return m; }
@@ -914,6 +944,7 @@ function createRuntime(opts = {}) {
   def('min', [1, -1], minmax('min', Math.min));
   def('max', [1, -1], minmax('max', Math.max));
   def('len', 1, v => {
+    if (v instanceof EBytes) return v.b.length;
     if (typeof v === 'string' || Array.isArray(v)) return v.length;
     if (isMap(v)) return Object.keys(v).length;
     err(`len needs a string, list or map, got ${typeOf(v)}`);
@@ -927,6 +958,10 @@ function createRuntime(opts = {}) {
   });
   def('clone', 1, v => clone(v));
   def('slice', [2, 3], (v, a, b) => {
+    if (v instanceof EBytes) {
+      if (!Number.isInteger(a) || (b !== undefined && b !== null && !Number.isInteger(b))) err('slice needs int bounds');
+      return new EBytes(Buffer.from(v.b.subarray(a < 0 ? Math.max(0, v.b.length + a) : a, b === undefined || b === null ? undefined : (b < 0 ? v.b.length + b : b))));
+    }
     if (typeof v !== 'string' && !Array.isArray(v)) err(`slice needs a string or list, got ${typeOf(v)}`);
     if (!Number.isInteger(a) || (b !== undefined && b !== null && !Number.isInteger(b))) err('slice needs int bounds');
     return v.slice(a, b === undefined || b === null ? undefined : b);
@@ -1001,6 +1036,80 @@ function createRuntime(opts = {}) {
     try { fs.writeFileSync(p, text); } catch (e) { err(`write_file: ${e.code || e.message} ${p}`); }
     append('write', { path: p, bytes: Buffer.byteLength(text) });
     return null;
+  });
+  // ── bytes (CIE-EG §3) ──
+  const needBytes = (v, who) => { if (!(v instanceof EBytes)) err(`${who} needs bytes, got ${typeOf(v)}`); return v.b; };
+  const byteList = (v, acc, who) => {
+    if (v instanceof EBytes) { for (const x of v.b) acc.push(x); return; }
+    if (Array.isArray(v)) { for (const x of v) byteList(x, acc, who); return; }
+    if (!Number.isInteger(v) || v < 0 || v > 255) err(`${who}: a byte is an int in 0..255, got ${show(v, true)}`);
+    acc.push(v);
+  };
+  def('bytes', 1, v => {
+    if (typeof v === 'string') return new EBytes(Buffer.from(v, 'utf8'));
+    const acc = [];
+    byteList(v, acc, 'bytes');
+    return new EBytes(Buffer.from(acc));
+  });
+  def('byte_len', 1, v => (typeof v === 'string' ? Buffer.byteLength(v, 'utf8') : needBytes(v, 'byte_len').length));
+  def('hex', 1, b => Buffer.from(needBytes(b, 'hex')).toString('hex'));
+  def('from_hex', 1, s => {
+    if (!/^(?:[0-9a-fA-F]{2})*$/.test(needStr(s, 'from_hex'))) err('from_hex needs pairs of hex digits');
+    return new EBytes(Buffer.from(s, 'hex'));
+  });
+  def('utf8', 1, b => {
+    const u = needBytes(b, 'utf8');
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(u); }
+    catch (_) {
+      for (let i = 0; i <= u.length; i++) {     // CIE-EG §2.2: name the first bad byte, never produce U+FFFD
+        try { new TextDecoder('utf-8', { fatal: true }).decode(u.subarray(0, i + 1)); }
+        catch (e2) {
+          try { new TextDecoder('utf-8', { fatal: true }).decode(u.subarray(0, i)); } catch (_) { continue; }
+          let j = i; while (j > 0 && (u[j] & 0xC0) === 0x80) j--;
+          err(`invalid UTF-8 at byte ${j}`);
+        }
+      }
+      err('invalid UTF-8');
+    }
+  });
+  const le = (who, width, signed) => (n) => {
+    const max = signed ? 2 ** (width * 8 - 1) - 1 : 2 ** (width * 8) - 1;
+    const min = signed ? -(2 ** (width * 8 - 1)) : 0;
+    if (!Number.isInteger(n) || n < min || n > Math.min(max, Number.MAX_SAFE_INTEGER)) err(`${who} needs an int in ${min}..${width === 8 ? '2^53' : max}, got ${show(n, true)}`);
+    const out = Buffer.alloc(width);
+    if (width === 8) out.writeBigUInt64LE(BigInt(n));
+    else if (signed) out.writeIntLE(n, 0, width); else out.writeUIntLE(n, 0, width);
+    return new EBytes(out);
+  };
+  def('u8', 1, le('u8', 1, false));
+  def('u16le', 1, le('u16le', 2, false));
+  def('u32le', 1, le('u32le', 4, false));
+  def('u64le', 1, le('u64le', 8, false));
+  def('i32le', 1, le('i32le', 4, true));
+  def('sha256', 1, v => new EBytes(crypto.createHash('sha256').update(typeof v === 'string' ? Buffer.from(v, 'utf8') : needBytes(v, 'sha256')).digest()));
+  def('read_bytes', 1, p => {
+    try { return new EBytes(fs.readFileSync(needStr(p, 'read_bytes'))); } catch (e) { err(`read_bytes: ${e.code || e.message} ${p}`); }
+  });
+  def('write_bytes', 2, (p, b) => {
+    noLens('write_bytes');
+    needStr(p, 'write_bytes');
+    const u = needBytes(b, 'write_bytes');
+    try { fs.writeFileSync(p, u); } catch (e) { err(`write_bytes: ${e.code || e.message} ${p}`); }
+    append('write', { path: p, bytes: u.length, sha256: crypto.createHash('sha256').update(u).digest('hex') });
+    return null;
+  });
+  def('chmod_exec', 1, p => {
+    noLens('chmod_exec');
+    try { fs.chmodSync(needStr(p, 'chmod_exec'), 0o755); } catch (e) { err(`chmod_exec: ${e.code || e.message} ${p}`); }
+    return null;
+  });
+  def('rotl', 2, (x, n) => { const w = word(x, 'rotl'); const c = count(n, 'rotl'); return ((w << c) | (w >>> ((32 - c) % 32))) >>> 0; });
+  def('rotr', 2, (x, n) => { const w = word(x, 'rotr'); const c = count(n, 'rotr'); return ((w >>> c) | (w << ((32 - c) % 32))) >>> 0; });
+  def('wrap32', 1, x => { if (!Number.isInteger(x) || !Number.isSafeInteger(x)) err(`wrap32 needs a safe int, got ${show(x, true)}`); return ((x % 4294967296) + 4294967296) % 4294967296; });
+  def('idiv', 2, (a, b) => {
+    if (!Number.isInteger(a) || !Number.isInteger(b)) err(`idiv needs two ints, got ${typeOf(a)} ${show(a, true)} and ${typeOf(b)} ${show(b, true)}`);
+    if (b === 0) err('division by zero');
+    return Math.floor(a / b);
   });
   def('truthy', 2, (v, who) => rt.truth(v, needStr(who, 'truthy')));
   def('find_text', 2, (s, x) => needStr(s, 'find_text').indexOf(needStr(x, 'find_text')));
@@ -1113,4 +1222,4 @@ function runCompiled(load, { file, argv = process.argv.slice(2), out, err } = {}
 
 const runtimeSignals = () => { const S = build.primitives().signals; return [S.rejected, S.gap_opened, S.promoted]; };
 
-module.exports = { createRuntime, runCompiled, parseRunArgs, finishRun, builtinArity, runtimeSignals, VERSION, show, eq, Compartment, EModule, isMap, isFn };
+module.exports = { EBytes, createRuntime, runCompiled, parseRunArgs, finishRun, builtinArity, runtimeSignals, VERSION, show, eq, Compartment, EModule, isMap, isFn };
