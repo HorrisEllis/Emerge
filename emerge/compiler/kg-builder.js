@@ -260,8 +260,12 @@ class ScoreGate extends Gate {
   transform(event, stream) {
     const { nodes, edges, parsedSpec } = event.data;
 
-    // Pass 1: own specDepth for every non-BLACK node
-    for (const [id, node] of nodes) {
+    // Pass 1: own specDepth for every non-BLACK node.
+    // §2026-10-28 — schemas are scored first. effectiveSpecDepth reads the specDepth of each schema a node names in
+    // schema_refs; scored in insertion order (modules before schemas) that depth was still 0.0, so every module with a
+    // schema_ref got readiness 0.0 and the tier contract reported it BLOCKED as a cycle when there was none.
+    const scoreOrder = [...nodes].sort((x, y) => (y[1].kind === 'schema') - (x[1].kind === 'schema'));
+    for (const [id, node] of scoreOrder) {
       if (node.isBlack) continue;
 
       const raw = node._raw ?? {};
@@ -278,6 +282,12 @@ class ScoreGate extends Gate {
         if (fieldCount >= 8) depth = Math.max(depth, DEPTH.FULL);
         else if (fieldCount >= 4) depth = Math.max(depth, DEPTH.CONTRACTS);
         else if (fieldCount > 0)  depth = Math.max(depth, DEPTH.EXPORTS);
+        // §2026-10-28 — a schema can confirm it is intentionally small: complete: true, and every field has a type.
+        // (gap-field-engine already said "spec more fields or confirm schema is intentionally small"; this is the confirm.)
+        const fieldVals = Object.values(raw.fields ?? {});
+        if (raw.complete === true && fieldCount > 0 && fieldVals.every(f => f && typeof f === 'object' ? !!f.type : !!f)) {
+          depth = DEPTH.FULL;
+        }
       }
 
       // FULL requires all declared fields + any explicit schema_refs resolve

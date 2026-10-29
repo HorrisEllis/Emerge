@@ -41,6 +41,11 @@ let dispatch = {
   unrouted: "log"            // "log": recorded + summarised on stderr · "error": a signal nobody handles stops the program
 }
 
+// the ledger (CIE-EG §4.6): a checkpoint entry is written after this many entries, and at clean shutdown
+let ledger = {
+  checkpoint_every: 256
+}
+
 let transitions = {
   discard_emits_on_refusal: true   // a refused or gapped transition's emits never leave it
 }
@@ -57,4 +62,91 @@ let diagnostics = {
   GAP_IS_FIRST_CLASS: "error",          // gap pressure outside its range, an unknown gap type
   EXECUTION_IS_TRACEABLE: "error",      // a compartment or component without id / namespace / version
   unused_constraint: "warning"          // a constraint that reads no state
+}
+
+// observation (CIE-EG §13): the ledger read as a field. Every number here is a tunable carried over from the intelligence system's
+// CFR / RFR2 / liminal / gap work, not a measurement. observe/ reads this section and has no defaults of its own.
+let observe = {
+  version: "1.0.0",
+
+  // CFR field: four dimensions in 0..1, nudged per entry kind, pulled toward neutral every entry.
+  // A kind listed in pressure_scaled has its nudge multiplied by the pressure the entry carries.
+  field: {
+    neutral: 0.5,
+    damping: 0.012,
+    start: { coherence: 0.6, friction: 0.2, resonance: 0.3, entropy: 0.2 },
+    repeat_window: 8,          // resonance rises when a stress entry repeats one of the last this-many keys
+    repeat_step: 0.04,
+    repeat_relief: 0.01,
+    deviation_entropy: 0.08,   // a deviating entry (sigma) adds up to this much entropy …
+    deviation_friction: 0.04,  // … and this much friction, in proportion to z / deviation_full_z
+    deviation_full_z: 3,
+    pressure_scaled: ["gap"],
+    regimes: {
+      chaotic_entropy: 0.7, chaotic_coherence: 0.25,
+      turbulent_friction: 0.65, turbulent_resonance: 0.7,
+      resonant_coherence: 0.55, resonant_entropy: 0.3
+    },
+    nudges: {
+      genesis:           { coherence: 0.1,   friction: -0.08,  entropy: -0.1 },
+      register:          { coherence: 0.02,  entropy: -0.01 },
+      compartment:       { coherence: 0.02,  entropy: -0.01 },
+      wire:              { coherence: 0.02,  entropy: -0.01 },
+      unwire:            { friction: 0.01 },
+      axiom:             { coherence: 0.04,  friction: -0.01,  entropy: -0.03 },
+      transition:        { coherence: 0.03,  friction: -0.01,  entropy: -0.02 },
+      promote:           { coherence: 0.04,  friction: -0.02,  entropy: -0.03 },
+      rejected:          { coherence: -0.04, friction: 0.06,   entropy: 0.05 },
+      gap:               { coherence: -0.08, friction: 0.07,   entropy: 0.1 },
+      unrouted:          { coherence: -0.05, friction: 0.05,   entropy: 0.06 },
+      promotion_refused: { coherence: -0.06, friction: 0.06,   entropy: 0.08 },
+      aborted:           { coherence: -0.12, friction: 0.1,    entropy: 0.12 },
+      write:             { coherence: 0.005 },
+      checkpoint:        { coherence: 0.01,  friction: -0.005, entropy: -0.01 }
+    }
+  },
+
+  // sigma deviation (RFR2 delta + sigma): z-score of each key's tick gap, and the regime of a window of them. Time is the seq.
+  deviation: {
+    window: 50,        // gaps remembered per key
+    min_samples: 3,    // gaps a key needs before its z means anything
+    tick_floor: 1,     // the spread is never taken below one tick
+    z_flag: 3,         // a z at or above this is reported as a deviation
+    rate_window: 16,   // entries per window for the stress share (K)
+    flip_z: 1          // a flip of sign counts toward oscillation only from this many sigmas
+  },
+  sigma: {
+    window: 16,
+    min_window: 3,
+    slope_threshold: 3,      // S in sigmas → degraded
+    accel_threshold: 0.5,    // K as a change of share → collapsing
+    oscillation_count: 3     // O → oscillatory
+  },
+
+  // liminal boundaries and the crystallisation gate
+  liminal: {
+    velocity: {
+      decay: 0.05,
+      runaway: 0.8,
+      gap_type: "structural",
+      gap_pressure: 0.7,
+      step: { gap: 0.15, rejected: 0.1, unrouted: 0.15, promotion_refused: 0.15, aborted: 0.5, transition: -0.05, promote: -0.05 }
+    },
+    surface: { window: 64, flips: 3 },
+    crystal: { min_count: 5, min_confidence: 0.75 }
+  },
+
+  // gap hunter: which findings become gap proposals, at what pressure, and how an open gap's tension climbs
+  gaps: {
+    dedup_hex: 32,
+    regime_types: { degraded: "temporal", collapsing: "causal", oscillatory: "contradiction" },
+    regime_pressure: { degraded: 0.6, collapsing: 0.85, oscillatory: 0.7 },    // × the regime's confidence
+    field_types: { turbulent: "contextual", chaotic: "contextual" },
+    field_pressure: { turbulent: 0.55, chaotic: 0.8 },
+    field_persist: 5,                                                           // entries a regime must hold
+    crystal_types: { refusal: "logical", unrouted: "structural" },
+    crystal_pressure: { refusal: 0.5, unrouted: 0.4 },                          // × the crystal's confidence
+    block_at: 0.9,                                                              // the contract's gate.block_at (CIE-EG §6.1) supersedes this once it exists
+    tension: { weight_pressure: 0.5, weight_age: 0.25, weight_repeat: 0.25, age_cap: 1024, repeat_cap: 5, medium: 0.4, high: 0.7, critical: 0.9 }
+  }
 }

@@ -10,7 +10,7 @@ compartment Stack {
 }
 on "rejected" (r) { record "overflow" { signal: r.signal } }
 
-fn gcd(a: int, b: int): int {
+fn gcd(a: num, b: num): num {
   if b == 0 { return a }
   return gcd(b, a % b)
 }

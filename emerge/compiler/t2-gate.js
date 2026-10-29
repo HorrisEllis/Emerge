@@ -2,44 +2,37 @@
 /**
  * emerge/compiler/t2-gate.js — THE MISSING GATE
  * UUID: nexus-emerge-t2-gate-v1-0000-2026-0625-jamesbrooks-001
- * Version: 1.0.0
+ * Version: 2.0.0
  *
- * This is the gate that was always supposed to exist.
- * T0 emits structure. T1 emits scaffolds with stubs.
- * T2 fills the stubs with real implementations via Ollama.
+ * T0 emits structure. T1 emits scaffolds with stubs. T2 fills the stubs with real implementations from a model.
  *
- * THE LOOP CLOSES HERE.
- *
- * Input:  compileResult from pipeline.js (has executionPlan.t2, outputDir, parsedSpec)
- * Output: Filled implementation files on disk. Registered with Cortex.
+ * §2026-10-28 (2.0.0) — Emerge depends on nothing above it. T2 used to post to Nexus's Guardian (:7820 /command, poll
+ * /api/seam/status, register with Cortex). It now calls a model through compiler/model.js:
+ *   dispatch(compileResult, { model })   model: an object with generate(prompt, meta), a module path, or settings
+ *                                        ({ api: ollama | openai, url, model }); default: local Ollama.
+ * Guardian is one model backend, kept in Nexus's repo and passed in.
  *
  * Dispatch path:
- *   T2 node → build SEAM prompt (spec fragment + T1 stub + axioms)
- *   → POST :7820/command { provider: 'ollama', content: seam_text }
- *   → guardian._buildSeamQueue() → SEAMQueue → _dispatchSeamOllamaNative()
- *   → Ollama streams response
- *   → guardian.seam.chunk.verified event
- *   → t2-gate receives via SSE → writes file → registers with Cortex
+ *   T2 node → prompt (spec fragment + T1 stub + axioms, language from the spec) → model.generate → checker (Emerge)
+ *   → write the file (or a .t2-rejected / .t2-proposal beside it)
  *
- * §1.1  Nothing exists until Ollama returns it and the Detector passes it
- * §1.2  Every failure written to t2_failures JAA table
+ * §1.1  Nothing exists until the model returns it and the checker passes it
+ * §1.2  Every failure is a result entry with its reason, never dropped
  * §1.3  No stubs in production — T2 must produce real code or flag the gap
- * §2.1  File written to disk before Cortex registration
  * §CC-003  T2 max 800 tokens per chunk
  * §CC-004  One node per chunk — no flooding
  */
 
 const fs     = require('fs');
 const path   = require('path');
-const http   = require('http');
-const crypto = require('crypto');
+const { loadModel } = require('./model');
+const { isEmergeTarget, modulePaths, EMERGE_CARD } = require('./target');
+const { GENERATED_MARK } = require('./emit-emerge');
 
 const MODULE_ID = 't2-gate';
 const VERSION   = '1.0.0';
 
-const GUARDIAN_PORT = parseInt(process.env.GUARDIAN_PORT || '7820');
 const MAX_TOKENS    = parseInt(process.env.T2_MAX_TOKENS || '800');
-const TIMEOUT_MS    = parseInt(process.env.T2_TIMEOUT_MS || '90000');
 
 // ── Build the SEAM prompt for a single T2 node ────────────────────────────────
 // One node per prompt. §CC-004.
@@ -50,11 +43,17 @@ function buildNodePrompt(node, parsedSpec, stubSrc, outputDir) {
   const gates    = specMod.gate_pipeline || [];
   const contracts= specMod.behavioral_contracts || [];
   const axioms   = (parsedSpec.axioms || []).slice(0, 5);
+  // §2026-10-28 — the spec decides the language (compiler/target.js); spec entries may be strings or objects.
+  const emerge   = isEmergeTarget(parsedSpec.meta || {});
+  const fence    = emerge ? 'eg' : 'typescript';
+  const asText   = (x, f) => typeof x === 'string' ? x : f(x);
 
   const lines = [
-    `# NEXUS T2 IMPLEMENTATION — ${modName}`,
+    `# T2 IMPLEMENTATION — ${modName}`,
     `# Token budget: ${MAX_TOKENS}. One function. No imports that don't exist.`,
-    `# Return ONLY valid JavaScript/TypeScript. No markdown. No explanation.`,
+    emerge ? `# Return ONLY valid Emerge (.eg). No markdown. No explanation. Never JavaScript or TypeScript.`
+           : `# Return ONLY valid JavaScript/TypeScript. No markdown. No explanation.`,
+    emerge ? EMERGE_CARD : '',
     ``,
     `## Spec: ${parsedSpec.meta?.name || 'unknown'} v${parsedSpec.meta?.version || '?'}`,
     `## Module: ${modName}`,
@@ -62,17 +61,17 @@ function buildNodePrompt(node, parsedSpec, stubSrc, outputDir) {
     ``,
     exports_.length ? [
       `## Exports (implement each):`,
-      ...exports_.map(e => `  - ${e.name}(${(e.params||[]).map(p=>p.name).join(', ')}): ${e.returns?.type||'void'}`),
+      ...exports_.map(e => `  - ${asText(e, e => `${e.name}(${(e.params||[]).map(p=>p.name).join(', ')}): ${e.returns?.type||'void'}`)}`),
     ].join('\n') : '',
     ``,
     gates.length ? [
       `## Gate pipeline (implement transforms):`,
-      ...gates.map(g => `  - ${g.id}: ${g.precondition || ''} → ${g.postcondition || ''}`),
+      ...gates.map(g => `  - ${asText(g, g => `${g.id}: ${g.precondition || ''} → ${g.postcondition || ''}`)}`),
     ].join('\n') : '',
     ``,
     contracts.length ? [
       `## Behavioral contracts:`,
-      ...contracts.slice(0, 3).map(c => `  - ${c.when}: ${c.then}`),
+      ...contracts.slice(0, emerge ? 8 : 3).map(c => `  - ${asText(c, c => `${c.when}: ${c.then}`)}`),
     ].join('\n') : '',
     ``,
     axioms.length ? [
@@ -81,73 +80,44 @@ function buildNodePrompt(node, parsedSpec, stubSrc, outputDir) {
     ].join('\n') : '',
     ``,
     `## Current stub (replace throw statements with real implementations):`,
-    `\`\`\`typescript`,
+    '```' + fence,
     (stubSrc || '// stub not found').slice(0, 1500),
     `\`\`\``,
     ``,
     `## INSTRUCTION:`,
-    `Replace every 'throw new Error' stub with a real implementation.`,
-    `Keep all type annotations. Keep the module structure.`,
-    `§1.3: No stubs. §1.2: Every failure must throw with a message.`,
+    ...(emerge ? [
+      `Replace every raise("... not implemented ...") stub with a real implementation.`,
+      `Keep the fn names and parameters. Remove the first line (the GENERATED marker).`,
+      `§1.3: No stubs. §1.2: Nothing fails silently: refuse with raise(...) or record a gap, never return a made-up value.`,
+    ] : [
+      `Replace every 'throw new Error' stub with a real implementation.`,
+      `Keep all type annotations. Keep the module structure.`,
+      `§1.3: No stubs. §1.2: Every failure must throw with a message.`,
+    ]),
     `Return ONLY the complete implementation file:`,
   ].filter(l => l !== '').join('\n');
 
   return lines;
 }
 
-// ── HTTP helper — POST to guardian ────────────────────────────────────────────
-function _postGuardian(path_, body) {
-  return new Promise((resolve, reject) => {
-    const bodyStr = JSON.stringify(body);
-    const req = http.request({
-      hostname: '127.0.0.1', port: GUARDIAN_PORT,
-      path: path_, method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) },
-      timeout: TIMEOUT_MS,
-    }, res => {
-      let data = '';
-      res.on('data', c => { data += c; });
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
-        catch(_) { resolve({ status: res.statusCode, body: data }); }
-      });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('guardian timeout')); });
-    req.write(bodyStr);
-    req.end();
-  });
-}
-
-// ── Poll guardian for SEAM queue completion ───────────────────────────────────
-async function _waitForQueue(queueId, timeoutMs = TIMEOUT_MS) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const r = await _postGuardian('/api/seam/status', { queueId });
-      const status = r.body?.status || r.body?.state;
-      if (status === 'complete' || status === 'COMPLETE') {
-        return { ok: true, response: r.body?.response || r.body?.text || '' };
-      }
-      if (status === 'escalated' || status === 'ESCALATED' || status === 'failed') {
-        return { ok: false, error: `SEAM ${status}: ${r.body?.error || 'unknown'}` };
-      }
-    } catch(_) {}
-    await new Promise(r => setTimeout(r, 2000));
-  }
-  return { ok: false, error: `SEAM timeout after ${timeoutMs}ms` };
-}
-
 // ── Write implementation back to disk ─────────────────────────────────────────
-function _writeImpl(outputDir, modName, src) {
+function _writeImpl(outputDir, modName, src, parsedSpec = {}) {
   // Strip markdown fences if Ollama wrapped the response
   src = src
-    .replace(/^```(?:typescript|javascript|ts|js)?\n?/m, '')
+    .replace(/^```(?:typescript|javascript|ts|js|eg|emerge)?\n?/m, '')
     .replace(/\n?```\s*$/m, '')
     .trim();
 
-  const modDir  = path.join(outputDir, 'src', 'modules', modName);
-  const outPath = path.join(modDir, `${modName}.ts`);
+  // §2026-10-28 — the path follows the spec's language and build plan (compiler/target.js)
+  const specMod = (parsedSpec.modules || []).find(m => (m.name || m.id) === modName) || { name: modName };
+  let   outPath = path.join(outputDir, modulePaths(specMod, parsedSpec.meta || {}).impl);
+  // Never overwrite code a person or an earlier run wrote: only a file still carrying the generator's mark is replaced.
+  // Otherwise the result goes beside it as <file>.t2-proposal.<ext> for review.
+  // (Emerge targets only: TypeScript stubs predate the mark, and their behaviour is unchanged.)
+  if (isEmergeTarget(parsedSpec.meta || {}) && fs.existsSync(outPath) && !fs.readFileSync(outPath, 'utf8').startsWith(GENERATED_MARK)) {
+    outPath = outPath.replace(/(\.[a-z]+)$/, '.t2-proposal$1');
+  }
+  const modDir  = path.dirname(outPath);
 
   fs.mkdirSync(modDir, { recursive: true });
   fs.writeFileSync(outPath, src, 'utf8');
@@ -160,8 +130,9 @@ function _writeImpl(outputDir, modName, src) {
  *
  * @param {object} compileResult   from pipeline.js compile()
  * @param {object} opts
- *   provider   — 'ollama' (default) | 'chatgpt' | 'claude'
- *   sequential — true = one node at a time (default for Ollama)
+ *   model      — model object { generate(prompt, meta) }, a module path, or settings { api, url, model }
+ *                (default: local Ollama, compiler/model.js)
+ *   sequential — true = one node at a time (the only mode; kept for callers)
  *   dryRun     — true = build prompts but don't dispatch
  *   onProgress — callback(node, status, detail)
  *
@@ -169,11 +140,11 @@ function _writeImpl(outputDir, modName, src) {
  */
 async function dispatch(compileResult, opts = {}) {
   const {
-    provider    = 'ollama',
     sequential  = true,
     dryRun      = false,
     onProgress  = null,
   } = opts;
+  const model = dryRun ? null : loadModel(opts.model);
 
   const { executionPlan, parsedSpec, outputDir } = compileResult;
 
@@ -199,7 +170,8 @@ async function dispatch(compileResult, opts = {}) {
     _progress(node, 'starting');
 
     // Read the T1 stub that was emitted
-    const stubPath = path.join(outputDir, 'src', 'modules', modName, `${modName}.ts`);
+    const specMod  = ((parsedSpec || {}).modules || []).find(m => (m.name || m.id) === modName) || { name: modName };
+    const stubPath = path.join(outputDir, modulePaths(specMod, (parsedSpec || {}).meta || {}).impl);
     let stubSrc = '';
     try { stubSrc = fs.readFileSync(stubPath, 'utf8'); }
     catch(_) { stubSrc = '// stub not found — T0 may not have run yet'; }
@@ -213,65 +185,40 @@ async function dispatch(compileResult, opts = {}) {
       continue;
     }
 
-    // Build a SEAM spec text that guardian can parse
-    const seamText = [
-      `spec:`,
-      `  meta:`,
-      `    name: t2-${modName}`,
-      `    version: 0.1.0`,
-      `  intent: Implement ${modName} per spec`,
-      `  axioms:`,
-      `    - §1.3 No stubs in production`,
-      `    - §1.2 Nothing silently fails`,
-      `  modules:`,
-      `    - name: ${modName}`,
-      `      intent: ${(parsedSpec?.modules || []).find(m => m.name === modName)?.intent || 'implement'}`,
-      `  implementation_request:`,
-      `    target: ${modName}`,
-      `    prompt: |`,
-      prompt.split('\n').map(l => `      ${l}`).join('\n'),
-    ].join('\n');
-
     try {
-      // Dispatch to guardian → seam-queue → Ollama
-      _progress(node, 'dispatching', `provider=${provider}`);
-
-      const dispatchR = await _postGuardian('/command', {
-        content:  seamText,
-        provider: provider,
-        title:    `T2: ${modName}`,
-        command:  'seam',
-      });
-
-      if (!dispatchR.body?.ok && !dispatchR.body?.queued) {
-        throw new Error(`dispatch failed: ${JSON.stringify(dispatchR.body).slice(0, 100)}`);
-      }
-
-      const queueId = dispatchR.body?.queueId || dispatchR.body?.queue?.uuid;
-      _progress(node, 'generating', `queueId=${queueId?.slice(0, 8)}`);
-
-      // Wait for completion
-      const result = await _waitForQueue(queueId);
-
-      if (!result.ok) {
+      _progress(node, 'generating', model.name);
+      const gen = await model.generate(prompt, { module: modName, spec: (parsedSpec || {}).meta?.name, outputDir });
+      if (!gen.ok) {
         failed++;
-        results.push({ node: modName, status: 'failed', error: result.error });
-        _progress(node, 'failed', result.error);
+        results.push({ node: modName, status: 'failed', error: gen.error });
+        _progress(node, 'failed', gen.error);
         continue;
+      }
+      const result = { response: String(gen.text ?? '') };
+
+      // §2026-10-28 — Emerge targets: the answer must pass the Emerge checker before it replaces anything.
+      // A failing answer is kept beside the scaffold as <file>.t2-rejected.eg with the checker's message, and counted failed.
+      if (isEmergeTarget((parsedSpec || {}).meta || {})) {
+        const clean = result.response.replace(/^```(?:eg|emerge)?\n?/m, '').replace(/\n?```\s*$/m, '').trim();
+        let err = null;
+        try { const c = require('../lang').compileSource(clean, modName + '.eg'); if (c.errors.length) err = String(c.errors[0].message ?? c.errors[0]); }
+        catch (e) { err = e.message; }
+        if (err) {
+          const rej = stubPath.replace(/(\.[a-z]+)$/, '.t2-rejected$1');
+          fs.mkdirSync(path.dirname(rej), { recursive: true });
+          fs.writeFileSync(rej, `// T2 answer rejected by the Emerge checker: ${err.replace(/\n/g, ' ')}\n` + clean + '\n', 'utf8');
+          failed++;
+          results.push({ node: modName, status: 'rejected', error: err, outPath: rej });
+          _progress(node, 'rejected', err);
+          continue;
+        }
       }
 
       // Write implementation to disk
-      const outPath = _writeImpl(outputDir, modName, result.response);
+      const outPath = _writeImpl(outputDir, modName, result.response, parsedSpec || {});
       completed++;
       results.push({ node: modName, status: 'complete', outPath, chars: result.response.length });
       _progress(node, 'complete', outPath);
-
-      // Register with Cortex (non-fatal)
-      try {
-        await _postGuardian('/api/cortex/register-file', {
-          path: outPath, module: modName, tier: 'T2', source: MODULE_ID,
-        });
-      } catch(_) {}
 
     } catch(e) {
       failed++;
@@ -287,7 +234,7 @@ async function dispatch(compileResult, opts = {}) {
     failed,
     skipped: t2Nodes.length - completed - failed,
     results,
-    provider,
+    model: model ? model.name : null,
   };
 }
 
@@ -297,7 +244,7 @@ async function dispatch(compileResult, opts = {}) {
  *
  * @param {string} specPath   path to .spec file
  * @param {string} outputDir  where to emit
- * @param {object} opts       provider, sequential, dryRun, onProgress
+ * @param {object} opts       model, host, dryRun, onProgress
  */
 async function run(specPath, outputDir, opts = {}) {
   const { compile } = require('./pipeline');
@@ -307,6 +254,7 @@ async function run(specPath, outputDir, opts = {}) {
     verbose:       opts.verbose || false,
     skipCortex:    opts.skipCortex || false,
     skipIdearium:  opts.skipIdearium || false,
+    host:          opts.host,
   });
 
   if (!compileResult.ok) {
@@ -334,7 +282,7 @@ async function run(specPath, outputDir, opts = {}) {
     summary: [
       `Compiled: ${compileResult.moduleName}`,
       `T2 nodes: ${t2Count} dispatched · ${t2Result.completed} complete · ${t2Result.failed} failed`,
-      `Provider: ${t2Result.provider}`,
+      `Model: ${t2Result.model}`,
       t2Result.results.map(r => `  ${r.node}: ${r.status}${r.error?' — '+r.error:''}`).join('\n'),
     ].join('\n'),
   };

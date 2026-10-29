@@ -1,0 +1,7 @@
+fn seq_len(b0: num): num {
+  if b0 <= 0x7F { return 1 }
+  if b0 >= 0xC2 and b0 <= 0xDF { return 2 }
+  if b0 >= 0xE0 and b0 <= 0xEF { return 3 }
+  if b0 >= 0xF0 and b0 <= 0xF4 { return 4 }
+  return 0
+}

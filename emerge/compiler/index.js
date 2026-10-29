@@ -15,7 +15,7 @@
  *   Token cost: 0
  *
  * CORTEX FIRST:
- *   Before emitting anything, compiler calls cortex-query.preflight().
+ *   Before emitting anything, compiler calls host.preflight() (compiler/host.js; Cortex was the old host).
  *   Files already in Cortex versionium are not re-emitted.
  *   Open gaps are injected into the relevant stubs as TODO comments.
  *
@@ -27,8 +27,8 @@
 
 const fs      = require('fs');
 const path    = require('path');
-const { preflight, ping } = require('../cortex-query');
-const { writeback, summarizeWriteback } = require('../cortex-query/writeback');
+// §2026-10-28 — a host, not Cortex: Emerge depends on nothing above it (compiler/host.js)
+const { loadHost } = require('./host');
 // -- Spec normalization -------------------------------------------------------
 // .spec modules come in two shapes: array (spec-parser.spec) or dict (causal-nexus.spec)
 
@@ -624,11 +624,12 @@ async function compile(specPath, outputDir, options = {}) {
 
   // ── Step 1: Query Cortex ─────────────────────────────────────────────────
   let cortexResult = null;
+  const host = loadHost(options.host);
   if (!skipCortex) {
-    const cortexPing = await ping();
-    if (verbose) console.log(`[compiler] Cortex: ${cortexPing.reachable ? 'reachable' : 'unreachable'}`);
+    const cortexPing = await host.ping();
+    if (verbose) console.log(`[compiler] host ${host.name}: ${cortexPing.reachable ? 'reachable' : 'unreachable'}`);
 
-    cortexResult = await preflight({
+    cortexResult = await host.preflight({
       moduleName,
       specPath,
       outputDir,
@@ -640,7 +641,7 @@ async function compile(specPath, outputDir, options = {}) {
       return {
         ok:      true,
         skipped: true,
-        reason:  'all files present in Cortex, no high gaps',
+        reason:  `all files present in host ${host.name}, no high gaps`,
         summary: cortexResult.summary,
         cortex:  cortexResult,
       };
@@ -674,8 +675,8 @@ async function compile(specPath, outputDir, options = {}) {
 
   let writebackReport = null;
   if (!skipCortex && !skipWriteback) {
-    writebackReport = await writeback(compileResult, specPath, { verbose });
-    if (verbose) console.log(`[compiler] writeback:\n${summarizeWriteback(writebackReport)}`);
+    writebackReport = await host.writeback(compileResult, specPath, { verbose });
+    if (verbose) console.log(`[compiler] writeback:\n${host.summarize(writebackReport)}`);
   }
 
   return { ...compileResult, writeback: writebackReport };

@@ -28,6 +28,7 @@ function emitProgram(program, { file, runtimeRequire }) {
   function ex(e) {
     switch (e.type) {
       case 'Num': return String(e.value);
+      case 'Int': return `${e.value}n`;
       case 'Bool': return String(e.value);
       case 'Null': return 'null';
       case 'Str':

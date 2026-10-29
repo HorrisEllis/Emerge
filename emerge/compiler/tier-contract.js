@@ -75,6 +75,21 @@ const TIER_CONTRACT = {
     gapType:      'circular_dependency',
     gapSeverity:  'high',
   },
+  // §2026-10-28 — from the spec's build plan (compiler/target.js). Neither emits code nor calls a model.
+  DONE: {
+    action:       'NONE',
+    label:        'done — already built, not re-emitted',
+    requiresLLM:  false,
+    emits:        [],
+  },
+  DEFERRED: {
+    action:       'DEFER',
+    label:        'deferred — waits for a named decision',
+    requiresLLM:  false,
+    emits:        ['gap record'],
+    gapType:      'awaiting_decision',
+    gapSeverity:  'medium',
+  },
   MISSING: {
     confidence:   'BLACK',
     action:       'MISSING',
@@ -89,6 +104,8 @@ const TIER_CONTRACT = {
 // ── Boundary values ───────────────────────────────────────────────────────────
 // Named constants for boundary conditions.
 // Use these in tests — never write 0.3, 0.5, 0.8 directly.
+
+const { buildDecision } = require('./target');
 
 const BOUNDARIES = {
   T2_MIN:   TIER_CONTRACT.T2.minReadiness,   // 0.8
@@ -126,6 +143,21 @@ function decideTier(node) {
       tier:        'MISSING',
       ...TIER_CONTRACT.MISSING,
       reason:      `'${node.name ?? node.id}' is referenced but never declared in spec`,
+      nodeId:      node.id ?? node.name,
+      readiness:   r,
+    };
+  }
+
+  // 1b. The spec's build plan (§2026-10-28): built → DONE, blocked by an open decision → DEFERRED.
+  //     Checked before readiness: a built module is done whatever its readiness, and a module waiting on a decision
+  //     must not be emitted however ready its spec looks.
+  const b = buildDecision(node._raw ?? node);
+  if (b) {
+    return {
+      tier:        b.tier,
+      ...TIER_CONTRACT[b.tier],
+      reason:      b.reason,
+      blockedBy:   b.blocked_by ?? [],
       nodeId:      node.id ?? node.name,
       readiness:   r,
     };
@@ -221,7 +253,7 @@ function shouldDispatchT2(node) {
 /** Returns true if this node should produce a gap record. */
 function shouldWriteGap(node) {
   const d = decideTier(node);
-  return d.tier === 'SKIP' || d.tier === 'BLOCKED' || d.tier === 'MISSING';
+  return d.tier === 'SKIP' || d.tier === 'BLOCKED' || d.tier === 'MISSING' || d.tier === 'DEFERRED';
 }
 
 // ── Batch decision — for full graph ──────────────────────────────────────────
@@ -233,7 +265,7 @@ function shouldWriteGap(node) {
  * Returns bucketed arrays for each tier + gap categories.
  */
 function decideAll(graph) {
-  const result = { t2: [], t1: [], t0: [], skip: [], blocked: [], missing: [] };
+  const result = { t2: [], t1: [], t0: [], skip: [], blocked: [], missing: [], done: [], deferred: [] };
   const nodes = graph.nodes ? [...graph.nodes.values()] : [];
 
   for (const node of nodes) {
@@ -245,6 +277,8 @@ function decideAll(graph) {
       case 'SKIP':    result.skip.push({ node, decision: d });    break;
       case 'BLOCKED': result.blocked.push({ node, decision: d }); break;
       case 'MISSING': result.missing.push({ node, decision: d }); break;
+      case 'DONE':     result.done.push({ node, decision: d });     break;
+      case 'DEFERRED': result.deferred.push({ node, decision: d }); break;
     }
   }
 
@@ -265,6 +299,8 @@ function summarize(all) {
     `SKIP:           ${all.skip.length}`,
     `BLOCKED:        ${all.blocked.length}`,
     `MISSING:        ${all.missing.length}`,
+    `DONE:           ${(all.done ?? []).length}`,
+    `DEFERRED:       ${(all.deferred ?? []).length}`,
   ];
   return lines.join('\n');
 }

@@ -1,0 +1,114 @@
+// lang/native/emerge.eg — the native Emerge compiler (CIE-EG section 10). Built from Emerge source by Emerge itself:
+//   emerge <main.eg> [-o out]
+// reads the program and every module it uses, parses them (front.eg), and writes a Linux x86-64 executable (codegen.eg)
+// whose runtime (rt.eg, carried inside this compiler as rt_text.eg) and standard library (core/prelude.eg, carried as
+// prelude_text.eg) are linked in. No Node, no libc.
+use "./front.eg" as front
+use "./codegen.eg" as cg
+use "./rt_text.eg" as rt_text
+use "./prelude_text.eg" as prelude_text
+
+fn last_slash(p) {
+  var i = len(p) - 1
+  while i >= 0 {
+    if p[i] == "/" { return i }
+    i -= 1
+  }
+  return -1
+}
+fn dirname(p) {
+  let k = last_slash(p)
+  if k < 0 { return "." }
+  if k == 0 { return "/" }
+  return slice(p, 0, k)
+}
+fn basename(p) { return slice(p, last_slash(p) + 1) }
+// split on "/" and resolve "." and ".." segments
+fn normalize(p) {
+  var segs = []
+  var cur = ""
+  for c in p + "/" {
+    if c == "/" {
+      if cur == ".." and len(segs) > 0 and segs[len(segs) - 1] != ".." {
+        segs = slice(segs, 0, len(segs) - 1)
+      } else if cur != "." and cur != "" {
+        segs[len(segs)] = cur
+      } else if cur == ".." {
+        segs[len(segs)] = cur
+      }
+      cur = ""
+    } else {
+      cur = cur + c
+    }
+  }
+  var out = ""
+  if len(p) > 0 and p[0] == "/" { out = "/" }
+  var first = true
+  for s in segs {
+    if not first { out = out + "/" }
+    out = out + s
+    first = false
+  }
+  if out == "" { return "." }
+  return out
+}
+fn resolve_path(base, rel) {
+  if len(rel) > 0 and rel[0] == "/" { return normalize(rel) }
+  return normalize(base + "/" + rel)
+}
+
+var modules = []
+var ids = {}
+var visiting = {}
+
+fn load(path, raw, text) { return load_as(path, raw, text, null) }
+fn load_as(path, raw, text, want_id) {
+  if has(ids, path) { return ids[path] }
+  if has(visiting, path) { raise("emerge: use cycle through {path}") }
+  visiting[path] = true
+  var src = text
+  if src == null { src = read_file(path) }
+  let ast = front.parse(src, basename(path))
+  var uses = {}
+  for it in ast.items {
+    if it.type == "Use" { uses[it.alias] = load(resolve_path(dirname(path), it.path), false, null) }
+  }
+  var id = "rt"
+  if not raw { id = "m" + str(len(modules)) }
+  if want_id != null { id = want_id }
+  modules[len(modules)] = { id: id, raw: raw, path: path, uses: uses, ast: ast }
+  ids[path] = id
+  visiting[path] = false
+  return id
+}
+
+fn main() {
+  let a = args()
+  if len(a) == 0 {
+    print("usage: emerge <main.eg> [-o out]")
+    return 1
+  }
+  var main_path = ""
+  var out = ""
+  var i = 0
+  while i < len(a) {
+    if a[i] == "-o" and i + 1 < len(a) {
+      out = a[i + 1]
+      i += 2
+    } else {
+      main_path = a[i]
+      i += 1
+    }
+  }
+  if out == "" {
+    out = basename(main_path)
+    if out ends_with ".eg" { out = slice(out, 0, len(out) - 3) }
+  }
+  load("<runtime>/rt.eg", true, rt_text.TEXT)
+  load_as("<prelude>", false, prelude_text.TEXT, "prelude")
+  let m = load(normalize(main_path), false, null)
+  write_bytes(out, cg.compile_bundle({ modules: modules, main: m }))
+  chmod_exec(out)
+  return 0
+}
+main()

@@ -19,6 +19,7 @@ function describe(tok) {
   if (tok.t === 'NL') return 'end of line';
   if (tok.t === 'STR') return 'a string';
   if (tok.t === 'NUM') return `number ${tok.v}`;
+  if (tok.t === 'INT') return `int ${tok.v}i`;
   return `"${tok.v}"`;
 }
 
@@ -664,6 +665,7 @@ class Parser {
     const t = this.peek();
     switch (t.t) {
       case 'NUM': this.next(); return this.node('Num', t, { value: t.v });
+      case 'INT': this.next(); return this.node('Int', t, { value: t.v });
       case 'STR': {
         this.next();
         const parts = t.parts.map(p => {

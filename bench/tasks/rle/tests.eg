@@ -1,0 +1,5 @@
+test "basic" { expect rle("aaabcc") == "a3b1c2" }
+test "empty" { expect rle("") == "" }
+test "single" { expect rle("z") == "z1" }
+test "long run" { expect rle("xxxxxxxxxxxx") == "x12" }
+test "alternating" { expect rle("abab") == "a1b1a1b1" }

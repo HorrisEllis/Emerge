@@ -1,0 +1,1 @@
+fn is_cont(b: num): bool = b >= 0x80 and b <= 0xBF

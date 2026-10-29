@@ -3,6 +3,8 @@
 //   [bytes…]          raw bytes
 //   { label: "n" }    a position
 //   { rel32: "n" }    4 bytes: target − (address after these 4 bytes). Used by call, jmp, jcc and [rip+disp].
+//   { abs64: "n" }    8 bytes: the absolute address of n (static data that points at code or data)
+//   { align: n }      zero bytes up to the next multiple of n
 // Every reference is 4 bytes wide, so one pass finds every label and the second writes the bytes.
 
 // ── little-endian ────────────────────────────────────────────────────────────
@@ -63,12 +65,89 @@ fn call() = [0xE8]                                               // + { rel32 }
 fn call_rip() = [0xFF, 0x15]                                     // call [rip+disp32] — an import slot
 fn lea_rsi_rip() = [0x48, 0x8D, 0x35]                            // lea rsi, [rip+disp32]
 
+// ── more instructions, added for the code generator's runtime routines ───────
+fn mov_rax_rcx() = [0x48, 0x89, 0xC8]
+fn mov_rax_rdx() = [0x48, 0x89, 0xD0]
+fn xor_rax_rcx() = [0x48, 0x31, 0xC8]
+fn add_rdx_rcx() = [0x48, 0x01, 0xCA]
+fn cmp_rcx_m1() = [0x48, 0x83, 0xF9, 0xFF]
+fn test_rdi() = [0x48, 0x85, 0xFF]
+fn xor_rdx_rdx() = [0x48, 0x31, 0xD2]
+fn div_rcx() = [0x48, 0xF7, 0xF1]                               // unsigned rdx:rax / rcx
+fn add_dl(n) = [0x80, 0xC2, n]
+fn dec_rsi() = [0x48, 0xFF, 0xCE]
+fn mov_mrsi_dl() = [0x88, 0x16]                                 // mov [rsi], dl
+fn mov_mrsi_imm8(n) = [0xC6, 0x06, n]                           // mov byte [rsi], n
+fn mov_rsi_rbp() = [0x48, 0x89, 0xEE]
+fn mov_rdx_rbp() = [0x48, 0x89, 0xEA]
+fn sub_rdx_rsi() = [0x48, 0x29, 0xF2]
+
+// ── general forms (2026-10-28, for the dynamic code generator and the runtime) ──
+// Registers 0..7 only (rax rcx rdx rbx rsp rbp rsi rdi), except the syscall argument moves into r8..r10.
+fn modrm(md, reg, rm) = md * 64 + reg * 8 + rm
+fn mem(reg, base, disp) {
+  // [base + disp32]; rsp as a base needs a SIB byte
+  if base == RSP { return [modrm(2, reg, base), 0x24] + le32(disp) }
+  return [modrm(2, reg, base)] + le32(disp)
+}
+let ADD = 0x01
+let OR = 0x09
+let AND = 0x21
+let SUB = 0x29
+let XOR = 0x31
+let CMP = 0x39
+fn mov_rr(d, s) = [0x48, 0x89, modrm(3, s, d)]                 // mov d, s
+fn alu_rr(op, d, s) = [0x48, op, modrm(3, s, d)]               // op d, s   (ADD OR AND SUB XOR CMP)
+fn imul_rr(d, s) = [0x48, 0x0F, 0xAF, modrm(3, d, s)]          // imul d, s
+fn test_rr(a, b) = [0x48, 0x85, modrm(3, b, a)]
+fn load(d, base, disp) = [0x48, 0x8B] + mem(d, base, disp)     // mov d, [base+disp]
+fn store(base, disp, s) = [0x48, 0x89] + mem(s, base, disp)    // mov [base+disp], s
+fn load8(d, base, disp) = [0x48, 0x0F, 0xB6] + mem(d, base, disp)   // movzx d, byte [base+disp]
+fn store8(base, disp, s) = [0x88] + mem(s, base, disp)         // mov byte [base+disp], s8   (s in rax rcx rdx rbx)
+fn lea_rip(d) = [0x48, 0x8D, modrm(0, d, 5)]                   // lea d, [rip+rel32]   + { rel32 }
+fn load_rip(d) = [0x48, 0x8B, modrm(0, d, 5)]                  // mov d, [rip+rel32]   + { rel32 }
+fn store_rip(s) = [0x48, 0x89, modrm(0, s, 5)]                 // mov [rip+rel32], s   + { rel32 }
+let SHL = 4
+let SHR = 5
+let SAR = 7
+fn shift_cl(kind, r) = [0x48, 0xD3, modrm(3, kind, r)]         // shl/shr/sar r, cl
+fn shift_imm(kind, r, n) = [0x48, 0xC1, modrm(3, kind, r), n]
+fn neg_r(r) = [0x48, 0xF7, modrm(3, 3, r)]
+fn not_r(r) = [0x48, 0xF7, modrm(3, 2, r)]
+fn idiv_r(r) = [0x48, 0xF7, modrm(3, 7, r)]                    // rdx:rax / r (signed)
+fn alu_imm(kind, r, n) = [0x48, 0x81, modrm(3, kind, r)] + le32(n)   // kind: 0 add, 1 or, 4 and, 5 sub, 6 xor, 7 cmp
+fn mov_ri(r, n) = [0x48, 0xC7, modrm(3, 0, r)] + le32(n)       // mov r, imm32 (sign-extended)
+fn mov_ri64(r, le8) = [0x48, 0xB8 + r] + le8                   // mov r, imm64 (eight little-endian bytes)
+fn call_r(r) = [0xFF, modrm(3, 2, r)]                          // call r
+fn rep_movsb() = [0xF3, 0xA4]                                  // copy rcx bytes [rsi] → [rdi]
+fn mov_r10_rr(s) = [0x49, 0x89, modrm(3, s, 2)]                // mov r10, s
+fn mov_r8_rr(s) = [0x49, 0x89, modrm(3, s, 0)]                 // mov r8, s
+fn mov_r9_rr(s) = [0x49, 0x89, modrm(3, s, 1)]                 // mov r9, s
+let CCU = { b: 0x2, ae: 0x3, be: 0x6, a: 0x7 }
+fn setcc_u(cc) = [0x0F, 0x90 + CCU[cc], 0xC0]                  // setb/setae/setbe/seta al
+
 // ── the assembler ────────────────────────────────────────────────────────────
+// the size of a raw item: a list of byte ints and/or bytes values
+fn item_size(it) {
+  var n = 0
+  for el in it {
+    if type_of(el) == "bytes" { n += byte_len(el) } else { n += 1 }
+  }
+  return n
+}
+// zero bytes needed to bring address a up to a multiple of n
+fn pad_to(a, n) {
+  let r = a % n
+  if r == 0 { return 0 }
+  return n - r
+}
 fn assemble(items, base, externs) {
   var at = {}
   var off = 0
   for it in items {
-    if type_of(it) == "list" { off += len(it) }
+    if type_of(it) == "list" { off += item_size(it) }
+    else if has(it, "align") { off += pad_to(base + off, it.align) }
+    else if has(it, "abs64") { off += 8 }
     else if has(it, "label") {
       if has(at, it.label) or has(externs, it.label) { raise("assembler: label {it.label} is defined twice") }
       at[it.label] = base + off
@@ -80,7 +159,20 @@ fn assemble(items, base, externs) {
   for it in items {
     if type_of(it) == "list" {
       out[len(out)] = it
-      pos += len(it)
+      pos += item_size(it)
+    } else if has(it, "align") {
+      let n = pad_to(base + pos, it.align)
+      if n > 0 {
+        var z = []
+        for k in 0..n { z[len(z)] = 0 }
+        out[len(out)] = z
+        pos += n
+      }
+    } else if has(it, "abs64") {
+      let target = get(at, it.abs64, get(externs, it.abs64))
+      if target == null { raise("assembler: no label {it.abs64}") }
+      pos += 8
+      out[len(out)] = le64(target)
     } else if has(it, "rel32") {
       let target = get(at, it.rel32, get(externs, it.rel32))
       if target == null { raise("assembler: no label {it.rel32}") }

@@ -7,7 +7,9 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { shouldEmitT1, decideTierForSpec } = require('./tier-contract');
+const { shouldEmitT1, decideTierForSpec, BOUNDARIES } = require('./tier-contract');
+const { isEmergeTarget, buildDecision } = require('./target');
+const { emitT0Emerge, emitT1Emerge } = require('./emit-emerge');
 
 function sanitizeSpec(raw) {
   // Pre-process .spec files to fix known YAML authoring issues:
@@ -82,6 +84,8 @@ const SPEC_DEPTH = {
  */
 async function emitT0(parsedSpec, outputDir, cortexResult = null) {
   parsedSpec = normalizeSpec(parsedSpec);
+  // §2026-10-28 — a spec built in Emerge gets .eg files, never package.json / tsconfig / .ts (compiler/target.js).
+  if (isEmergeTarget(parsedSpec.meta)) return emitT0Emerge(parsedSpec, outputDir);
   const skipped = [];
   const emitted = [];
   const failures = [];
@@ -199,6 +203,9 @@ async function emitT0(parsedSpec, outputDir, cortexResult = null) {
   for (const mod of modules) {
     const modName = mod.name ?? mod.id;
     const modDir  = path.join(outputDir, 'src', 'modules', modName);
+    // §2026-10-28 — built, or waiting on a decision, per the spec's build plan: nothing to emit.
+    const buildGate = buildDecision(mod);
+    if (buildGate) { skip(modName, buildGate.reason); continue; }
 
     // Module barrel
     write(path.join(modDir, 'index.ts'), [
@@ -255,6 +262,12 @@ async function emitT0(parsedSpec, outputDir, cortexResult = null) {
  */
 async function emitT1(parsedSpec, knowledgeGraph, outputDir, cortexResult = null) {
   parsedSpec = normalizeSpec(parsedSpec);
+  if (isEmergeTarget(parsedSpec.meta)) {
+    return emitT1Emerge(parsedSpec, outputDir, {
+      readinessOf: mod => knowledgeGraph?.getNodeByName?.(mod.name ?? mod.id)?.generationReadiness ?? computeGenReadiness(mod, knowledgeGraph),
+      minReadiness: BOUNDARIES.T1_MIN,
+    });
+  }
   const emitted  = [];
   const skipped  = [];
   const failures = [];
@@ -283,6 +296,8 @@ async function emitT1(parsedSpec, knowledgeGraph, outputDir, cortexResult = null
 
   for (const mod of modules) {
     const modName    = mod.name ?? mod.id;
+    const buildGate  = buildDecision(mod);
+    if (buildGate) { skipped.push({ name: modName, reason: buildGate.reason }); continue; }
     const specDepth  = computeSpecDepth(mod);
     const genReady   = computeGenReadiness(mod, knowledgeGraph);
 

@@ -23,7 +23,7 @@ module.exports = Object.freeze({
   COMPILER_SKIPPED: { description: 'Nothing to generate: every file is already in Cortex and no high gap is open (and --force was not set).', payloadShape: ['moduleName', 'reason', 'summary', 'cortex'], severity: 'info' },
   COMPILER_T0_DONE: { description: 'T0 finished: the structure, its graph and the tier map, with no model involved.', payloadShape: ['t0', 'graph', 'tierMap'], severity: 'info' },
   COMPILER_T1_DONE: { description: 'T1 finished: the scaffold for the module, with no model involved.', payloadShape: ['t1'], severity: 'info' },
-  COMPILER_COMPLETE: { description: 'The compile finished: its result, what was written back, and the Idearium sync.', payloadShape: ['writeback', 'idearium'], severity: 'notable' },
+  COMPILER_COMPLETE: { description: 'The compile finished: its result, the host it reported to, what was written back, and the host sync.', payloadShape: ['host', 'writeback', 'sync'], severity: 'notable' },
   COMPILER_ERROR: { description: 'A pipeline step failed; the step, its error and where it happened.', payloadShape: ['step', 'error', 'specPath', 'moduleName', 'gateSig', 'stack', 'filename'], severity: 'failure' },
 
   // ── the knowledge graph (compiler/kg-builder.js) ─────────────────────────────────────────────────────────────

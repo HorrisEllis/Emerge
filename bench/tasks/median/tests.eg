@@ -1,0 +1,13 @@
+test "odd" { expect median([3, 1, 2]) == 2 }
+test "even" { expect median([4, 1, 3, 2]) == 2.5 }
+test "single" { expect median([7]) == 7 }
+test "input untouched" {
+  let xs = [3, 1, 2]
+  let m = median(xs)
+  expect xs == [3, 1, 2]
+}
+test "empty raises" {
+  var raised = false
+  try { median([]) } else e { raised = true }
+  expect raised, "empty list must raise"
+}

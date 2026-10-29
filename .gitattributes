@@ -2,3 +2,5 @@
 # so a CRLF checkout (git on Windows) would otherwise look like changed sources.
 * text=auto eol=lf
 *.zip binary
+# the self-hosted native compiler, rebuilt by itself (lang/test/selfhost.test.js checks it byte for byte)
+emerge/lang/native/bin/emerge binary

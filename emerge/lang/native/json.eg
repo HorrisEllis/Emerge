@@ -1,0 +1,163 @@
+// lang/native/json.eg — a JSON reader in Emerge. Works on bytes (constant-time indexing), builds strings with utf8().
+// parse(text) → the value. Numbers with a fraction or an exponent go through num(), which native code refuses for now.
+var src = bytes("")
+var pos = 0
+var n = 0
+
+fn parse(text) {
+  src = bytes(text)
+  pos = 0
+  n = len(src)
+  let v = value()
+  ws()
+  if pos != n { fail("trailing characters") }
+  return v
+}
+fn fail(what) { raise("json: {what} at byte {pos}") }
+fn ws() {
+  while pos < n {
+    let c = src[pos]
+    if c != 32 and c != 9 and c != 10 and c != 13 { return null }
+    pos += 1
+  }
+}
+fn need(c) {
+  if pos >= n or src[pos] != c { fail("expected byte {c}") }
+  pos += 1
+}
+fn word(w, v) {
+  let b = bytes(w)
+  for i in 0..len(b) {
+    if pos + i >= n or src[pos + i] != b[i] { fail("expected {w}") }
+  }
+  pos += len(b)
+  return v
+}
+fn value() {
+  ws()
+  if pos >= n { fail("unexpected end") }
+  let c = src[pos]
+  if c == 123 { return object() }
+  if c == 91 { return array() }
+  if c == 34 { return string() }
+  if c == 116 { return word("true", true) }
+  if c == 102 { return word("false", false) }
+  if c == 110 { return word("null", null) }
+  return number()
+}
+fn object() {
+  need(123)
+  var m = {}
+  ws()
+  if pos < n and src[pos] == 125 {
+    pos += 1
+    return m
+  }
+  while true {
+    ws()
+    let k = string()
+    ws()
+    need(58)
+    m[k] = value()
+    ws()
+    if pos < n and src[pos] == 44 {
+      pos += 1
+    } else {
+      need(125)
+      return m
+    }
+  }
+}
+fn array() {
+  need(91)
+  var a = []
+  ws()
+  if pos < n and src[pos] == 93 {
+    pos += 1
+    return a
+  }
+  while true {
+    a[len(a)] = value()
+    ws()
+    if pos < n and src[pos] == 44 {
+      pos += 1
+    } else {
+      need(93)
+      return a
+    }
+  }
+}
+fn hexval(c) {
+  if c >= 48 and c <= 57 { return c - 48 }
+  if c >= 97 and c <= 102 { return c - 87 }
+  if c >= 65 and c <= 70 { return c - 55 }
+  fail("bad hex digit")
+}
+fn hex4() {
+  var v = 0
+  for i in 0..4 {
+    if pos >= n { fail("short \\u escape") }
+    v = v * 16 + hexval(src[pos])
+    pos += 1
+  }
+  return v
+}
+// the UTF-8 bytes of one code point
+fn encode(cp) {
+  if cp < 128 { return [cp] }
+  if cp < 2048 { return [192 + idiv(cp, 64), 128 + cp % 64] }
+  if cp < 65536 { return [224 + idiv(cp, 4096), 128 + idiv(cp, 64) % 64, 128 + cp % 64] }
+  return [240 + idiv(cp, 262144), 128 + idiv(cp, 4096) % 64, 128 + idiv(cp, 64) % 64, 128 + cp % 64]
+}
+fn string() {
+  need(34)
+  var out = []
+  var start = pos
+  while true {
+    if pos >= n { fail("unterminated string") }
+    let c = src[pos]
+    if c == 34 {
+      out[len(out)] = slice(src, start, pos)
+      pos += 1
+      return utf8(bytes(out))
+    }
+    if c == 92 {
+      out[len(out)] = slice(src, start, pos)
+      pos += 1
+      if pos >= n { fail("unterminated escape") }
+      let e = src[pos]
+      pos += 1
+      if e == 110 { out[len(out)] = 10 }
+      else if e == 116 { out[len(out)] = 9 }
+      else if e == 114 { out[len(out)] = 13 }
+      else if e == 98 { out[len(out)] = 8 }
+      else if e == 102 { out[len(out)] = 12 }
+      else if e == 117 {
+        var cp = hex4()
+        if cp >= 55296 and cp <= 56319 and pos + 1 < n and src[pos] == 92 and src[pos + 1] == 117 {
+          pos += 2
+          let lo = hex4()
+          cp = 65536 + (cp - 55296) * 1024 + (lo - 56320)
+        }
+        out[len(out)] = encode(cp)
+      } else {
+        out[len(out)] = e
+      }
+      start = pos
+    } else {
+      pos += 1
+    }
+  }
+}
+fn number() {
+  let start = pos
+  var plain = true
+  while pos < n {
+    let c = src[pos]
+    if c == 46 or c == 101 or c == 69 { plain = false }
+    if not ((c >= 48 and c <= 57) or c == 45 or c == 43 or c == 46 or c == 101 or c == 69) { break }
+    pos += 1
+  }
+  if pos == start { fail("unexpected byte {src[start]}") }
+  return num(utf8(slice(src, start, pos)))
+}

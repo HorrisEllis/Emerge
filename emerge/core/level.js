@@ -4,7 +4,7 @@
 // component_id: emerge.core.level
 // Map: docs/2026-10-02-emerge-field-memory-build-phasemap.spec (EM1)
 
-const { canonicalize, hash64 } = require('../../../intelligence/rfr2/identity');
+const { canonicalize, hash: hash64 } = require('./identity');   // §2026-10-28 emerge's own: ECF + full SHA-256 (was rfr2, Nexus tree)
 
 function createLevels() {
   const nodes = new Map();

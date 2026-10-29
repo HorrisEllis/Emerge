@@ -1,0 +1,15 @@
+fn top_word(text) {
+  let words = split(lower(trim(text)), " ") |> filter(fn(w) = w != "")
+  if len(words) == 0 { return null }
+  let groups = group_by(words, fn(w) = w)
+  var best = null
+  var best_n = 0
+  for w in sort(keys(groups)) {
+    let n = len(groups[w])
+    if n > best_n {
+      best = w
+      best_n = n
+    }
+  }
+  return best
+}

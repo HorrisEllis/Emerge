@@ -209,7 +209,7 @@ class SchemaCompletenessGate extends Gate {
           blast,
           'fields:0'
         ));
-      } else if (fieldCount < 3) {
+      } else if (fieldCount < 3 && node.specDepth < 1.0) {   // a schema confirmed complete (kg-builder) is not underspecified
         newGaps.push(makeGap(
           node.id, GAP_TYPE.SEMANTIC, GAP_REASON.COMPRESSION,
           0.5,

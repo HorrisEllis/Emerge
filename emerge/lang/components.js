@@ -33,7 +33,7 @@ function typeAccepts(to, from) {
   if (!from.nullable || to.nullable || to.name === 'any') { /* nullability ok */ } else return false;
   if (to.name === 'any') return true;
   const num = n => n === 'num' || n === 'float';
-  if (num(to.name)) return num(from.name) || from.name === 'int';
+  if (num(to.name)) return num(from.name);          // int is its own type: no implicit int → float
   return to.name === from.name;
 }
 

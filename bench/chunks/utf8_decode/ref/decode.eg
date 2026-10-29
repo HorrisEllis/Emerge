@@ -1,0 +1,17 @@
+fn decode(bs: list): map {
+  var cps = []
+  var i = 0
+  while i < len(bs) {
+    let n = seq_len(bs[i])
+    if n == 0 or i + n > len(bs) { return { ok: false, offset: i } }
+    var cp = lead_bits(bs[i], n)
+    for k in 1..n {
+      if not is_cont(bs[i + k]) { return { ok: false, offset: i } }
+      cp = add_cont(cp, bs[i + k])
+    }
+    if not valid_scalar(cp, n) { return { ok: false, offset: i } }
+    cps = push(cps, cp)
+    i += n
+  }
+  return { ok: true, cps: cps }
+}

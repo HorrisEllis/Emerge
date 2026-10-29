@@ -1,0 +1,6 @@
+test "simple" { expect top_word("a b a") == "a" }
+test "case" { expect top_word("Go go GO stop") == "go" }
+test "tie alphabetical" { expect top_word("pear apple pear apple fig") == "apple" }
+test "empty" { expect top_word("") == null }
+test "spaces only" { expect top_word("   ") == null }
+test "extra spaces" { expect top_word("  x  y  x ") == "x" }

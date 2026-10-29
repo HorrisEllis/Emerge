@@ -106,7 +106,7 @@ function buildFile(mainPath, outDir, opts = {}) {
     fs.mkdirSync(path.join(base, 'lang'), { recursive: true });
     fs.mkdirSync(path.join(base, 'core'), { recursive: true });
     fs.cpSync(path.join(__dirname, 'build', 'current'), path.join(base, 'lang', 'build', 'current'), { recursive: true });
-    for (const f of ['runtime.js', 'errors.js', 'components.js', 'build-loader.js']) {
+    for (const f of ['runtime.js', 'errors.js', 'components.js', 'build-loader.js', 'ledger.js']) {
       fs.copyFileSync(path.join(__dirname, f), path.join(base, 'lang', f));
       files.push(path.join(base, 'lang', f));
     }

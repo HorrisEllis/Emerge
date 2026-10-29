@@ -36,7 +36,7 @@
  *
  * node            — KGNode from the knowledge graph
  * graph           — KnowledgeGraph (for dep resolution + similar node lookup)
- * cortexPreflight — result of cortex-query.preflight()
+ * cortexPreflight — result of host.preflight() (compiler/host.js)
  * tier            — 2 | 3
  *
  * Returns a Chunk object ready for emitToPrompt().

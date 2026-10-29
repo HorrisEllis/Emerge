@@ -1,0 +1,6 @@
+fn lead_bits(b0: num, n: num): num {
+  if n == 1 { return b0 }
+  if n == 2 { return b0 & 0x1F }
+  if n == 3 { return b0 & 0x0F }
+  return b0 & 0x07
+}
