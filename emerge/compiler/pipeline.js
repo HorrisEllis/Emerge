@@ -29,16 +29,18 @@
  *
  * §1.2  Nothing silently fails — errors are events, not exceptions
  * §CC-002  T0Gate and T1Gate call zero LLM APIs
- * §CC-001  CortexQueryGate runs before any emit
+ * §CC-001  CortexQueryGate runs before any emit — it asks the HOST (compiler/host.js)
+ *
+ * §2026-10-28 — Emerge depends on nothing above it. The compiler no longer calls Cortex or Idearium: it calls a host
+ * (options.host: an object, a module path, or EMERGE_HOST; default the local host, which writes a build record to the
+ * output folder). A project's own host (Nexus has one, in its repo) is passed in. Event names are unchanged.
  */
 
 const fs   = require('fs');
 const path = require('path');
 
 const { Event, Gate, Stream, StreamLog } = require('../siso');
-const { preflight, ping }                = require('../cortex-query');
-const { writeback, summarizeWriteback }  = require('../cortex-query/writeback');
-const { sync: ideaSync }                 = require('../idearium/client');
+const { loadHost }                       = require('./host');
 const {
   emitT0, emitT1,
   normalizeSpec, sanitizeSpec,
@@ -110,9 +112,10 @@ class CortexQueryGate extends Gate {
     const { specPath, options, parsedSpec, moduleName } = event.data;
 
     let cortexResult = null;
+    const host = loadHost(options.host);
 
-    if (!options.skipCortex) {
-      cortexResult = await preflight({
+    if (!options.skipCortex && !options.skipHost) {
+      cortexResult = await host.preflight({
         moduleName,
         specPath,
         outputDir: options.outputDir,
@@ -122,7 +125,7 @@ class CortexQueryGate extends Gate {
       if (cortexResult.skipGeneration && !options.force) {
         stream.emit(new Event(E.SKIPPED, {
           moduleName,
-          reason:  'all files present in Cortex, no high gaps',
+          reason:  `all files present in host ${host.name}, no high gaps`,
           summary: cortexResult.summary,
           cortex:  cortexResult,
         }));
@@ -286,26 +289,27 @@ class WritebackGate extends Gate {
       cortex: cortexResult,
     };
 
+    const host = loadHost(options.host);
     let writebackReport = null;
-    if (!options.skipCortex && !options.skipWriteback) {
-      writebackReport = await writeback(compileResult, event.data.specPath, {
+    if (!options.skipCortex && !options.skipHost && !options.skipWriteback) {
+      writebackReport = await host.writeback(compileResult, event.data.specPath, {
         verbose: options.verbose,
       });
     }
 
-    // Idearium sync — push compile result, pull open ideas (non-fatal)
-    let idearium = null;
-    if (!options.skipIdearium) {
-      idearium = await ideaSync(compileResult);
-      if (options.verbose && idearium.ok) {
-        console.log('[pipeline] Idearium: ' + idearium.summary);
-      }
+    // Host sync (the local host has nothing to sync; a project's host may push the result somewhere) — non-fatal
+    let sync = null;
+    if (!options.skipIdearium && !options.skipSync) {
+      sync = await host.sync({ ...compileResult, parsedSpec });
+      if (options.verbose && sync?.summary) console.log(`[pipeline] host ${host.name}: ${sync.summary}`);
     }
 
     stream.emit(new Event(E.COMPLETE, {
       ...compileResult,
+      parsedSpec,          // §2026-10-28 — t2-gate.dispatch reads it; without it every T2 prompt was built from an empty spec
+      host:      host.name,
       writeback: writebackReport,
-      idearium,
+      sync,
     }));
   }
 }
@@ -511,13 +515,14 @@ if (require.main === module) {
   const verbose    = args.includes('--verbose');
   const force      = args.includes('--force');
   const skipCortex = args.includes('--skip-cortex');
+  const hostArg = args.indexOf('--host') > -1 ? args[args.indexOf('--host') + 1] : undefined;
 
   if (!specPath) {
-    console.error('Usage: node pipeline.js <spec-path> [output-dir] [--verbose] [--force] [--skip-cortex]');
+    console.error('Usage: node pipeline.js <spec-path> [output-dir] [--verbose] [--force] [--skip-cortex] [--host <module>]');
     process.exit(1);
   }
 
-  compile(specPath, outputDir, { verbose, force, skipCortex, tier: 1 })
+  compile(specPath, outputDir, { verbose, force, skipCortex, host: hostArg, tier: 1 })
     .then(result => {
       if (!result.ok) {
         console.error(`[pipeline] FAILED: ${result.error}`);

@@ -1,0 +1,1630 @@
+// lang/native/rt.eg — the native runtime, written in Emerge (CIE-EG section 0: Node out; section 10: native).
+// Compiled by codegen.eg in RAW mode only, never interpreted: every value here is a 64-bit machine word, + - * / % are
+// machine arithmetic (wrapping, truncating), comparisons are signed, if/while test for non-zero, and the functions at the
+// top are intrinsics the code generator replaces with instructions. Everything the compiled program does with values —
+// arithmetic, strings, lists, maps, printing, files — is a call into this file.
+//
+// A value is one 64-bit word:
+//   ...xxx000  pointer to a heap object (8-aligned); its first word is its kind
+//   ...xxx001  num   (integral, |n| <= 2^53), value << 3 | 1
+//   ...xxx011  int   (64-bit, small form for -2^60 <= n < 2^60), value << 3 | 3; larger ints are boxed (K_INT)
+//   2 null · 10 false · 18 true
+// Heap objects:
+//   K_STR   [kind][bytes][code points][utf-8 bytes …]          immutable
+//   K_LIST  [kind][length][capacity][items pointer]            mutable, shared by reference
+//   K_MAP   [kind][count][capacity][keys][vals][index][index capacity]   insertion-ordered, string keys, by reference
+//   K_BYTES [kind][length][bytes …]                             immutable
+//   K_INT   [kind][value]                                       a 64-bit int outside the small range
+// Memory is one reserved region (mmap), handed out by a bump pointer. Nothing is freed yet.
+
+// ── intrinsics: stubs so the JS checker accepts this file; the code generator emits instructions instead ─────────────
+fn mem_get(a) = 0
+fn mem_set(a, v) = 0
+fn mem_get8(a) = 0
+fn mem_set8(a, v) = 0
+fn mem_copy(dst, src, n) = 0
+fn sys6(n, a, b, c, d, e) = 0
+fn add_ovf(a, b) = 0
+fn sub_ovf(a, b) = 0
+fn mul_ovf(a, b) = 0
+fn entry_sp() = 0
+fn unwind(rec) = 0
+// IEEE doubles as 64-bit patterns
+fn f_add(a, b) = 0
+fn f_sub(a, b) = 0
+fn f_mul(a, b) = 0
+fn f_div(a, b) = 0
+fn f_sqrt(a) = 0
+fn f_of_int(i) = 0
+fn f_trunc(a) = 0
+fn f_lt(a, b) = 0
+fn f_le(a, b) = 0
+fn f_eq(a, b) = 0
+
+let NULL = 2
+let FALSE = 10
+let TRUE = 18
+let K_STR = 1
+let K_LIST = 2
+let K_MAP = 3
+let K_BYTES = 4
+let K_INT = 5
+let K_FN = 6
+let NUM_MAX = 9007199254740992
+let SMALL_MAX = 1152921504606846976i      // 2^60: an int literal, so the value is exact everywhere
+
+var rt_hp = 0
+var rt_he = 0
+var rt_sp = 0
+var rt_loc = 0          // the statement running now: [file string][line], written by compiled code (not by the prelude)
+var rt_handler = 0      // innermost try: [handler address][saved rbp][previous handler] on the stack
+var rt_nargs = 0        // how many arguments the value being called got (builtins as values read it)
+var rt_err = 2          // the error value a handler receives: { message, line, file }
+
+// ── memory ───────────────────────────────────────────────────────────────────
+fn rt_init() {
+  rt_sp = entry_sp()
+  let size = 1 << 36
+  // mmap(0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE, -1, 0)
+  rt_hp = sys6(9, 0, size, 3, 16418, -1)
+  if rt_hp < 0 and rt_hp > -4096 { rt_die_lit("cannot reserve memory") }
+  rt_he = rt_hp + size
+  return 0
+}
+fn rt_alloc(n) {
+  let p = rt_hp
+  rt_hp = rt_hp + ((n + 7) & -8)
+  if rt_hp > rt_he { rt_die_lit("out of memory") }
+  return p
+}
+
+// ── failing ──────────────────────────────────────────────────────────────────
+fn rt_write(fd, p, n) {
+  var off = 0
+  while off < n {
+    let w = sys6(1, fd, p + off, n - off, 0, 0)
+    if w <= 0 { return 0 }
+    off = off + w
+  }
+  return 0
+}
+// every failure ends here: inside a try, the handler gets { message, line, file }; otherwise the message goes to stderr
+// as the interpreter writes it ("error: file:line: message") and the program exits with status 1
+fn rt_die_lit(msg) {
+  if rt_handler != 0 {
+    let e = rt_map_new()
+    rt_map_set(e, "message", msg)
+    if rt_loc != 0 {
+      rt_map_set(e, "line", rt_mknum(mem_get(rt_loc + 8)))
+      rt_map_set(e, "file", mem_get(rt_loc))
+    } else {
+      rt_map_set(e, "line", NULL)
+      rt_map_set(e, "file", NULL)
+    }
+    rt_err = e
+    let h = rt_handler
+    rt_handler = mem_get(h + 16)
+    unwind(h)
+  }
+  let sb = rt_sb_new()
+  rt_sb_str(sb, "error: ")
+  if rt_loc != 0 {
+    rt_sb_str(sb, mem_get(rt_loc))
+    rt_sb_byte(sb, 58)
+    rt_sb_dec(sb, mem_get(rt_loc + 8))
+    rt_sb_str(sb, ": ")
+  }
+  rt_sb_str(sb, msg)
+  rt_sb_byte(sb, 10)
+  rt_write(2, mem_get(sb), mem_get(sb + 8))
+  sys6(60, 1, 0, 0, 0, 0)
+  return 0
+}
+fn rt_fail(msg) { return rt_die_lit(msg) }
+fn rt_fail2(a, b) {
+  let sb = rt_sb_new()
+  rt_sb_str(sb, a)
+  rt_sb_str(sb, b)
+  return rt_die_lit(rt_sb_done(sb))
+}
+fn rt_fail3(a, b, c) {
+  let sb = rt_sb_new()
+  rt_sb_str(sb, a)
+  rt_sb_str(sb, b)
+  rt_sb_str(sb, c)
+  return rt_die_lit(rt_sb_done(sb))
+}
+fn rt_fail4(a, b, c, d) {
+  let sb = rt_sb_new()
+  rt_sb_str(sb, a)
+  rt_sb_str(sb, b)
+  rt_sb_str(sb, c)
+  rt_sb_str(sb, d)
+  return rt_die_lit(rt_sb_done(sb))
+}
+fn rt_ovf(op) { return rt_fail3("int overflow in ", op, ": result does not fit in 64 bits (use wrap_add / wrap_sub / wrap_mul to wrap)") }
+fn rt_unsupported(what) { return rt_fail3("native: ", what, " is not in the native subset yet") }
+
+// ── tags ─────────────────────────────────────────────────────────────────────
+fn rt_is_ptr(v) { return (v & 7) == 0 and v != 0 }
+fn rt_kind(v) {
+  if (v & 7) == 0 { return mem_get(v) }
+  return 0
+}
+fn rt_bool(c) {
+  if c { return TRUE }
+  return FALSE
+}
+fn rt_is_num(v) { return (v & 7) == 1 }
+fn rt_is_int(v) { return (v & 7) == 3 or rt_kind(v) == K_INT }
+fn rt_is_str(v) { return rt_kind(v) == K_STR }
+fn rt_mknum(x) {
+  if x > NUM_MAX or x < 0 - NUM_MAX { rt_unsupported("a num beyond 2^53") }
+  return x * 8 + 1
+}
+fn rt_numval(v) { return v >> 3 }
+fn rt_mkint(x) {
+  if x >= 0 - SMALL_MAX and x < SMALL_MAX { return x * 8 + 3 }
+  let p = rt_alloc(16)
+  mem_set(p, K_INT)
+  mem_set(p + 8, x)
+  return p
+}
+fn rt_intval(v) {
+  if (v & 7) == 3 { return v >> 3 }
+  return mem_get(v + 8)
+}
+fn rt_type_name(v) {
+  let t = v & 7
+  if t == 1 { return "num" }
+  if t == 3 { return "int" }
+  if v == NULL { return "null" }
+  if v == TRUE or v == FALSE { return "bool" }
+  let k = mem_get(v)
+  if k == K_STR { return "string" }
+  if k == K_LIST { return "list" }
+  if k == K_MAP { return "map" }
+  if k == K_BYTES { return "bytes" }
+  if k == K_INT { return "int" }
+  return "fn"
+}
+
+// ── strings ──────────────────────────────────────────────────────────────────
+fn rt_str_new(n) {
+  let s = rt_alloc(24 + n)
+  mem_set(s, K_STR)
+  mem_set(s + 8, n)
+  return s
+}
+fn rt_str_finish(s) {
+  let n = mem_get(s + 8)
+  var c = 0
+  var i = 0
+  while i < n {
+    if (mem_get8(s + 24 + i) & 192) != 128 { c = c + 1 }
+    i = i + 1
+  }
+  mem_set(s + 16, c)
+  return s
+}
+fn rt_str_from(p, n) {
+  let s = rt_str_new(n)
+  mem_copy(s + 24, p, n)
+  return rt_str_finish(s)
+}
+fn rt_str_eq(a, b) {
+  let n = mem_get(a + 8)
+  if n != mem_get(b + 8) { return 0 }
+  var i = 0
+  while i < n {
+    if mem_get8(a + 24 + i) != mem_get8(b + 24 + i) { return 0 }
+    i = i + 1
+  }
+  return 1
+}
+fn rt_str_cmp(a, b) {
+  let na = mem_get(a + 8)
+  let nb = mem_get(b + 8)
+  var i = 0
+  while i < na and i < nb {
+    let x = mem_get8(a + 24 + i)
+    let y = mem_get8(b + 24 + i)
+    if x != y { return x - y }
+    i = i + 1
+  }
+  return na - nb
+}
+// byte offset of code point i (0 <= i <= code points)
+fn rt_cp_off(s, i) {
+  let n = mem_get(s + 8)
+  var off = 0
+  var c = 0
+  while off < n {
+    if (mem_get8(s + 24 + off) & 192) != 128 {
+      if c == i { return off }
+      c = c + 1
+    }
+    off = off + 1
+  }
+  return n
+}
+fn rt_str_slice(s, a, b) {
+  let o1 = rt_cp_off(s, a)
+  let o2 = rt_cp_off(s, b)
+  return rt_str_from(s + 24 + o1, o2 - o1)
+}
+fn rt_str_find(s, sub) {
+  let n = mem_get(s + 8)
+  let m = mem_get(sub + 8)
+  var i = 0
+  while i + m <= n {
+    var j = 0
+    while j < m and mem_get8(s + 24 + i + j) == mem_get8(sub + 24 + j) { j = j + 1 }
+    if j == m { return i }
+    i = i + 1
+  }
+  return -1
+}
+
+// ── string builder (raw memory, not a value): [buffer][length][capacity] ────
+fn rt_sb_new() {
+  let b = rt_alloc(24)
+  mem_set(b, rt_alloc(64))
+  mem_set(b + 8, 0)
+  mem_set(b + 16, 64)
+  return b
+}
+fn rt_sb_room(b, n) {
+  let len = mem_get(b + 8)
+  var cap = mem_get(b + 16)
+  if len + n <= cap { return 0 }
+  while len + n > cap { cap = cap * 2 }
+  let nb = rt_alloc(cap)
+  mem_copy(nb, mem_get(b), len)
+  mem_set(b, nb)
+  mem_set(b + 16, cap)
+  return 0
+}
+fn rt_sb_add(b, p, n) {
+  rt_sb_room(b, n)
+  mem_copy(mem_get(b) + mem_get(b + 8), p, n)
+  mem_set(b + 8, mem_get(b + 8) + n)
+  return 0
+}
+fn rt_sb_byte(b, c) {
+  rt_sb_room(b, 1)
+  mem_set8(mem_get(b) + mem_get(b + 8), c)
+  mem_set(b + 8, mem_get(b + 8) + 1)
+  return 0
+}
+fn rt_sb_str(b, s) { return rt_sb_add(b, s + 24, mem_get(s + 8)) }
+fn rt_sb_done(b) { return rt_str_from(mem_get(b), mem_get(b + 8)) }
+fn rt_sb_dec(b, x) {
+  // decimal of a signed 64-bit word; works on negatives digit by digit, so the minimum needs no negation
+  if x == 0 { return rt_sb_byte(b, 48) }
+  let tmp = rt_alloc(24)
+  var n = 0
+  var v = x
+  while v != 0 {
+    var d = v % 10
+    if d < 0 { d = 0 - d }
+    mem_set8(tmp + n, 48 + d)
+    n = n + 1
+    v = v / 10
+  }
+  if x < 0 { rt_sb_byte(b, 45) }
+  while n > 0 {
+    n = n - 1
+    rt_sb_byte(b, mem_get8(tmp + n))
+  }
+  return 0
+}
+fn rt_hex(d) {
+  if d < 10 { return 48 + d }
+  return 87 + d
+}
+
+// ── showing values (the interpreter's show) ──────────────────────────────────
+fn rt_is_ident(s) {
+  let n = mem_get(s + 8)
+  if n == 0 { return 0 }
+  var i = 0
+  while i < n {
+    let c = mem_get8(s + 24 + i)
+    let alpha = (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95
+    let digit = c >= 48 and c <= 57
+    if not alpha and not (digit and i > 0) { return 0 }
+    i = i + 1
+  }
+  return 1
+}
+fn rt_sb_json(b, s) {
+  rt_sb_byte(b, 34)
+  let n = mem_get(s + 8)
+  var i = 0
+  while i < n {
+    let c = mem_get8(s + 24 + i)
+    if c == 34 {
+      rt_sb_byte(b, 92)
+      rt_sb_byte(b, 34)
+    }
+    else if c == 92 {
+      rt_sb_byte(b, 92)
+      rt_sb_byte(b, 92)
+    }
+    else if c == 10 {
+      rt_sb_byte(b, 92)
+      rt_sb_byte(b, 110)
+    }
+    else if c == 13 {
+      rt_sb_byte(b, 92)
+      rt_sb_byte(b, 114)
+    }
+    else if c == 9 {
+      rt_sb_byte(b, 92)
+      rt_sb_byte(b, 116)
+    }
+    else if c == 8 {
+      rt_sb_byte(b, 92)
+      rt_sb_byte(b, 98)
+    }
+    else if c == 12 {
+      rt_sb_byte(b, 92)
+      rt_sb_byte(b, 102)
+    }
+    else if c < 32 {
+      rt_sb_byte(b, 92)
+      rt_sb_byte(b, 117)
+      rt_sb_byte(b, 48)
+      rt_sb_byte(b, 48)
+      rt_sb_byte(b, rt_hex(c >> 4))
+      rt_sb_byte(b, rt_hex(c & 15))
+    } else { rt_sb_byte(b, c) }
+    i = i + 1
+  }
+  return rt_sb_byte(b, 34)
+}
+fn rt_show_into(b, v, nested) {
+  let t = v & 7
+  if t == 1 or t == 3 { return rt_sb_dec(b, v >> 3) }
+  if v == NULL { return rt_sb_str(b, "null") }
+  if v == TRUE { return rt_sb_str(b, "true") }
+  if v == FALSE { return rt_sb_str(b, "false") }
+  let k = mem_get(v)
+  if k == K_INT { return rt_sb_dec(b, mem_get(v + 8)) }
+  if k == K_STR {
+    if nested { return rt_sb_json(b, v) }
+    return rt_sb_str(b, v)
+  }
+  if k == K_LIST {
+    rt_sb_byte(b, 91)
+    let n = mem_get(v + 8)
+    let items = mem_get(v + 24)
+    var i = 0
+    while i < n {
+      if i > 0 {
+        rt_sb_byte(b, 44)
+        rt_sb_byte(b, 32)
+      }
+      rt_show_into(b, mem_get(items + i * 8), 1)
+      i = i + 1
+    }
+    return rt_sb_byte(b, 93)
+  }
+  if k == K_MAP {
+    let n = mem_get(v + 8)
+    if n == 0 { return rt_sb_str(b, "\{\}") }
+    rt_sb_byte(b, 123)
+    let keys = mem_get(v + 24)
+    let vals = mem_get(v + 32)
+    var i = 0
+    while i < n {
+      if i > 0 {
+        rt_sb_byte(b, 44)
+        rt_sb_byte(b, 32)
+      }
+      let key = mem_get(keys + i * 8)
+      if rt_is_ident(key) { rt_sb_str(b, key) } else { rt_sb_json(b, key) }
+      rt_sb_byte(b, 58)
+      rt_sb_byte(b, 32)
+      rt_show_into(b, mem_get(vals + i * 8), 1)
+      i = i + 1
+    }
+    return rt_sb_byte(b, 125)
+  }
+  if k == K_BYTES {
+    let n = mem_get(v + 8)
+    rt_sb_str(b, "<bytes ")
+    rt_sb_dec(b, n)
+    if n > 0 {
+      rt_sb_str(b, ": ")
+      var i = 0
+      while i < n and i < 16 {
+        let c = mem_get8(v + 16 + i)
+        rt_sb_byte(b, rt_hex(c >> 4))
+        rt_sb_byte(b, rt_hex(c & 15))
+        i = i + 1
+      }
+      if n > 16 { rt_sb_str(b, "…") }
+    }
+    return rt_sb_byte(b, 62)
+  }
+  if k == K_FN {
+    rt_sb_str(b, "<fn ")
+    rt_sb_str(b, mem_get(v + 32))
+    return rt_sb_byte(b, 62)
+  }
+  return rt_sb_str(b, "<?>")
+}
+fn rt_show(v, nested) {
+  if rt_kind(v) == K_STR and not nested { return v }
+  let b = rt_sb_new()
+  rt_show_into(b, v, nested)
+  return rt_sb_done(b)
+}
+fn rt_tostr(v) { return rt_show(v, 0) }
+fn rt_print(list) {
+  let b = rt_sb_new()
+  let n = mem_get(list + 8)
+  let items = mem_get(list + 24)
+  var i = 0
+  while i < n {
+    if i > 0 { rt_sb_byte(b, 32) }
+    rt_show_into(b, mem_get(items + i * 8), 0)
+    i = i + 1
+  }
+  rt_sb_byte(b, 10)
+  rt_write(1, mem_get(b), mem_get(b + 8))
+  return NULL
+}
+fn rt_concat(a, b) {
+  let sb = rt_sb_new()
+  rt_sb_str(sb, a)
+  rt_sb_str(sb, b)
+  return rt_sb_done(sb)
+}
+
+// ── lists ────────────────────────────────────────────────────────────────────
+fn rt_list_new(cap) {
+  var c = cap
+  if c < 4 { c = 4 }
+  let l = rt_alloc(32)
+  mem_set(l, K_LIST)
+  mem_set(l + 8, 0)
+  mem_set(l + 16, c)
+  mem_set(l + 24, rt_alloc(c * 8))
+  return l
+}
+fn rt_list_push(l, v) {
+  let n = mem_get(l + 8)
+  let cap = mem_get(l + 16)
+  if n == cap {
+    let items = rt_alloc(cap * 16)
+    mem_copy(items, mem_get(l + 24), n * 8)
+    mem_set(l + 24, items)
+    mem_set(l + 16, cap * 2)
+  }
+  mem_set(mem_get(l + 24) + n * 8, v)
+  mem_set(l + 8, n + 1)
+  return l
+}
+fn rt_list_get(l, i) { return mem_get(mem_get(l + 24) + i * 8) }
+fn rt_list_len_t(l) { return rt_mknum(mem_get(l + 8)) }
+fn rt_list_at_t(l, i) { return rt_list_get(l, i >> 3) }
+
+// ── maps ─────────────────────────────────────────────────────────────────────
+fn rt_map_new() {
+  let m = rt_alloc(56)
+  mem_set(m, K_MAP)
+  mem_set(m + 8, 0)
+  mem_set(m + 16, 8)
+  mem_set(m + 24, rt_alloc(64))
+  mem_set(m + 32, rt_alloc(64))
+  mem_set(m + 40, rt_alloc(128))
+  mem_set(m + 48, 16)
+  return m
+}
+fn rt_hash(s) {
+  var h = -3750763034362895579i
+  let n = mem_get(s + 8)
+  var i = 0
+  while i < n {
+    h = (h ^ mem_get8(s + 24 + i)) * 1099511628211
+    i = i + 1
+  }
+  return h
+}
+fn rt_map_find(m, k) {
+  let idx = mem_get(m + 40)
+  let mask = mem_get(m + 48) - 1
+  let keys = mem_get(m + 24)
+  var i = rt_hash(k) & mask
+  while 1 {
+    let e = mem_get(idx + i * 8)
+    if e == 0 { return -1 }
+    if rt_str_eq(mem_get(keys + (e - 1) * 8), k) { return e - 1 }
+    i = (i + 1) & mask
+  }
+  return -1
+}
+fn rt_map_index_insert(m, k, e) {
+  let idx = mem_get(m + 40)
+  let mask = mem_get(m + 48) - 1
+  var i = rt_hash(k) & mask
+  while mem_get(idx + i * 8) != 0 { i = (i + 1) & mask }
+  mem_set(idx + i * 8, e + 1)
+  return 0
+}
+// a key that JavaScript treats as an array index: "0" or a digit string without a leading 0, below 2^32 - 1; else -1
+fn rt_key_index(k) {
+  let n = mem_get(k + 8)
+  if n == 0 or n > 10 { return -1 }
+  if n > 1 and mem_get8(k + 24) == 48 { return -1 }
+  var v = 0
+  var i = 0
+  while i < n {
+    let c = mem_get8(k + 24 + i)
+    if c < 48 or c > 57 { return -1 }
+    v = v * 10 + (c - 48)
+    i = i + 1
+  }
+  if v > 4294967294 { return -1 }
+  return v
+}
+fn rt_map_set(m, k, v) {
+  if rt_kind(k) != K_STR { rt_fail2("a map key must be a string, got ", rt_type_name(k)) }
+  let e = rt_map_find(m, k)
+  if e >= 0 {
+    mem_set(mem_get(m + 32) + e * 8, v)
+    return m
+  }
+  let n = mem_get(m + 8)
+  let cap = mem_get(m + 16)
+  if n == cap {
+    let nk = rt_alloc(cap * 16)
+    let nv = rt_alloc(cap * 16)
+    mem_copy(nk, mem_get(m + 24), n * 8)
+    mem_copy(nv, mem_get(m + 32), n * 8)
+    mem_set(m + 24, nk)
+    mem_set(m + 32, nv)
+    mem_set(m + 16, cap * 2)
+  }
+  // the interpreter's maps are JavaScript objects: keys that are array indices ("0", "17") come first, in numeric
+  // order, then the other keys in insertion order
+  let ki = rt_key_index(k)
+  var at = n
+  if ki >= 0 {
+    at = 0
+    while at < n {
+      let ok = rt_key_index(mem_get(mem_get(m + 24) + at * 8))
+      if ok < 0 or ok > ki { break }
+      at = at + 1
+    }
+  }
+  var j = n
+  while j > at {
+    mem_set(mem_get(m + 24) + j * 8, mem_get(mem_get(m + 24) + (j - 1) * 8))
+    mem_set(mem_get(m + 32) + j * 8, mem_get(mem_get(m + 32) + (j - 1) * 8))
+    j = j - 1
+  }
+  mem_set(mem_get(m + 24) + at * 8, k)
+  mem_set(mem_get(m + 32) + at * 8, v)
+  mem_set(m + 8, n + 1)
+  if at < n {
+    // entries moved: rebuild the hash index
+    let icap = mem_get(m + 48)
+    var c = 0
+    while c < icap {
+      mem_set(mem_get(m + 40) + c * 8, 0)
+      c = c + 1
+    }
+    var i = 0
+    while i <= n {
+      rt_map_index_insert(m, mem_get(mem_get(m + 24) + i * 8), i)
+      i = i + 1
+    }
+  }
+  if at < n and (n + 1) * 2 <= mem_get(m + 48) { return m }
+  if (n + 1) * 2 > mem_get(m + 48) {
+    let icap = mem_get(m + 48) * 2
+    mem_set(m + 40, rt_alloc(icap * 8))
+    mem_set(m + 48, icap)
+    var i = 0
+    while i <= n {
+      rt_map_index_insert(m, mem_get(mem_get(m + 24) + i * 8), i)
+      i = i + 1
+    }
+  } else {
+    rt_map_index_insert(m, k, n)
+  }
+  return m
+}
+fn rt_map_get(m, k) {
+  if rt_kind(k) != K_STR { return NULL }
+  let e = rt_map_find(m, k)
+  if e < 0 { return NULL }
+  return mem_get(mem_get(m + 32) + e * 8)
+}
+
+// ── bytes ────────────────────────────────────────────────────────────────────
+fn rt_bytes_new(n) {
+  let b = rt_alloc(16 + n)
+  mem_set(b, K_BYTES)
+  mem_set(b + 8, n)
+  return b
+}
+fn rt_bytes_flatten(sb, v) {
+  let t = v & 7
+  if t == 1 or t == 3 or rt_kind(v) == K_INT {
+    var x = 0
+    if t == 1 { x = v >> 3 } else { x = rt_intval(v) }
+    if x < 0 or x > 255 { rt_fail("bytes: every number must be 0..255") }
+    return rt_sb_byte(sb, x)
+  }
+  let k = rt_kind(v)
+  if k == K_BYTES { return rt_sb_add(sb, v + 16, mem_get(v + 8)) }
+  if k == K_STR { return rt_sb_add(sb, v + 24, mem_get(v + 8)) }
+  if k == K_LIST {
+    let n = mem_get(v + 8)
+    var i = 0
+    while i < n {
+      rt_bytes_flatten(sb, rt_list_get(v, i))
+      i = i + 1
+    }
+    return 0
+  }
+  return rt_fail2("bytes: cannot take bytes of a ", rt_type_name(v))
+}
+
+// ── numbers ──────────────────────────────────────────────────────────────────
+fn rt_num_or_int_error(op, a, b) {
+  let sb = rt_sb_new()
+  rt_sb_str(sb, op)
+  rt_sb_str(sb, " needs two nums or two ints, got ")
+  rt_sb_str(sb, rt_type_name(a))
+  rt_sb_str(sb, " and ")
+  rt_sb_str(sb, rt_type_name(b))
+  return rt_die_lit(rt_sb_done(sb))
+}
+fn rt_int_result(x) { return rt_mkint(x) }
+fn rt_add(a, b) {
+  if (a & 7) == 1 and (b & 7) == 1 { return rt_mknum((a >> 3) + (b >> 3)) }
+  if rt_is_int(a) and rt_is_int(b) {
+    let x = rt_intval(a)
+    let y = rt_intval(b)
+    if add_ovf(x, y) { rt_ovf("+") }
+    return rt_mkint(x + y)
+  }
+  if (rt_is_int(a) and (b & 7) == 1) or ((a & 7) == 1 and rt_is_int(b)) { rt_mixed("+", a, b) }
+  let ka = rt_kind(a)
+  let kb = rt_kind(b)
+  if ka == K_STR { return rt_concat(a, rt_tostr(b)) }
+  if ka == K_BYTES and kb == K_BYTES {
+    let na = mem_get(a + 8)
+    let nb = mem_get(b + 8)
+    let r = rt_bytes_new(na + nb)
+    mem_copy(r + 16, a + 16, na)
+    mem_copy(r + 16 + na, b + 16, nb)
+    return r
+  }
+  if ka == K_MAP and kb == K_MAP {
+    let m = rt_map_new()
+    var i = 0
+    while i < mem_get(a + 8) {
+      rt_map_set(m, mem_get(mem_get(a + 24) + i * 8), mem_get(mem_get(a + 32) + i * 8))
+      i = i + 1
+    }
+    i = 0
+    while i < mem_get(b + 8) {
+      rt_map_set(m, mem_get(mem_get(b + 24) + i * 8), mem_get(mem_get(b + 32) + i * 8))
+      i = i + 1
+    }
+    return m
+  }
+  if ka == K_LIST and kb == K_LIST {
+    let na = mem_get(a + 8)
+    let nb = mem_get(b + 8)
+    let l = rt_list_new(na + nb)
+    var i = 0
+    while i < na {
+      rt_list_push(l, rt_list_get(a, i))
+      i = i + 1
+    }
+    i = 0
+    while i < nb {
+      rt_list_push(l, rt_list_get(b, i))
+      i = i + 1
+    }
+    return l
+  }
+  return rt_fail4("+ cannot combine ", rt_type_name(a), " and ", rt_type_name(b))
+}
+fn rt_sub(a, b) {
+  if (a & 7) == 1 and (b & 7) == 1 { return rt_mknum((a >> 3) - (b >> 3)) }
+  if rt_is_int(a) and rt_is_int(b) {
+    let x = rt_intval(a)
+    let y = rt_intval(b)
+    if sub_ovf(x, y) { rt_ovf("-") }
+    return rt_mkint(x - y)
+  }
+  return rt_num_or_int_error("-", a, b)
+}
+fn rt_mul(a, b) {
+  if (a & 7) == 1 and (b & 7) == 1 {
+    let x = a >> 3
+    let y = b >> 3
+    if mul_ovf(x, y) { rt_unsupported("a num beyond 2^53") }
+    return rt_mknum(x * y)
+  }
+  if rt_is_int(a) and rt_is_int(b) {
+    let x = rt_intval(a)
+    let y = rt_intval(b)
+    if mul_ovf(x, y) { rt_ovf("*") }
+    return rt_mkint(x * y)
+  }
+  return rt_num_or_int_error("*", a, b)
+}
+fn rt_num_pow(a, b) {
+  let x = a >> 3
+  var y = b >> 3
+  if y < 0 { return rt_unsupported("a fractional num") }
+  var r = 1
+  while y > 0 {
+    if mul_ovf(r, x) { rt_unsupported("a num beyond 2^53") }
+    r = r * x
+    y = y - 1
+  }
+  return rt_mknum(r)
+}
+fn rt_div(a, b) {
+  if (a & 7) == 1 and (b & 7) == 1 {
+    let x = a >> 3
+    let y = b >> 3
+    if y == 0 { rt_fail("division by zero") }
+    if x % y != 0 { rt_unsupported("a fractional num") }
+    return rt_mknum(x / y)
+  }
+  if rt_is_int(a) and rt_is_int(b) { rt_fail("int / int is refused: use idiv(a, b)") }
+  return rt_num_or_int_error("/", a, b)
+}
+fn rt_floor_div(x, y) {
+  var q = x / y
+  if (x % y != 0) and ((x < 0) != (y < 0)) { q = q - 1 }
+  return q
+}
+fn rt_floor_mod(x, y) {
+  if y == -1 { return 0 }
+  var r = x % y
+  if r != 0 and ((r < 0) != (y < 0)) { r = r + y }
+  return r
+}
+fn rt_mod(a, b) {
+  if (a & 7) == 1 and (b & 7) == 1 {
+    let y = b >> 3
+    if y == 0 { rt_fail("modulo by zero") }
+    return rt_mknum(rt_floor_mod(a >> 3, y))
+  }
+  if rt_is_int(a) and rt_is_int(b) {
+    let y = rt_intval(b)
+    if y == 0 { rt_fail("modulo by zero") }
+    return rt_mkint(rt_floor_mod(rt_intval(a), y))
+  }
+  return rt_num_or_int_error("%", a, b)
+}
+fn rt_idiv(a, b) {
+  if rt_is_int(a) and rt_is_int(b) {
+    let x = rt_intval(a)
+    let y = rt_intval(b)
+    if y == 0 { rt_fail("division by zero") }
+    if y == -1 {
+      if sub_ovf(0, x) { rt_ovf("idiv") }
+      return rt_mkint(0 - x)
+    }
+    return rt_mkint(rt_floor_div(x, y))
+  }
+  if (a & 7) == 1 and (b & 7) == 1 {
+    let y = b >> 3
+    if y == 0 { rt_fail("division by zero") }
+    return rt_mknum(rt_floor_div(a >> 3, y))
+  }
+  return rt_num_or_int_error("idiv", a, b)
+}
+fn rt_neg(a) {
+  if (a & 7) == 1 { return rt_mknum(0 - (a >> 3)) }
+  if rt_is_int(a) {
+    let x = rt_intval(a)
+    if sub_ovf(0, x) { rt_ovf("unary -") }
+    return rt_mkint(0 - x)
+  }
+  return rt_fail2("unary - needs a num or an int, got ", rt_type_name(a))
+}
+fn rt_not(a) {
+  if rt_truth(a, "not") { return FALSE }
+  return TRUE
+}
+// a condition must be a bool: "if needs a bool, got num 1", as the interpreter says
+fn rt_truth(a, what) {
+  if a == TRUE { return 1 }
+  if a == FALSE { return 0 }
+  let sb = rt_sb_new()
+  rt_sb_str(sb, what)
+  rt_sb_str(sb, " needs a bool, got ")
+  rt_sb_str(sb, rt_type_name(a))
+  rt_sb_byte(sb, 32)
+  rt_show_into(sb, a, 1)
+  return rt_die_lit(rt_sb_done(sb))
+}
+// Bit operations, as the interpreter does them. On nums: 32-bit words — a num in [-2^31, 2^32) taken as its unsigned
+// 32-bit pattern, every result an unsigned word in [0, 2^32), >> logical, shift counts 0..31. On ints: the 64-bit two's
+// complement pattern — & | ^ need two ints, << wraps, >> is arithmetic, shift counts 0..63 given as a num or an int.
+fn rt_word(v, op) {
+  if (v & 7) != 1 { rt_num_or_int_error(op, v, v) }
+  let x = v >> 3
+  if x < -2147483648 or x > 4294967295 { rt_fail3(op, " works on 32-bit words: an int in [-2^31, 2^32), got ", rt_show(v, 1)) }
+  return x & 4294967295
+}
+fn rt_count(n, op, most) {
+  var c = -1
+  if (n & 7) == 1 { c = n >> 3 } else if rt_is_int(n) and most == 63 { c = rt_intval(n) }
+  if c < 0 or c > most {
+    if most == 63 { rt_fail3(op, " on an int needs a shift count in 0..63, got ", rt_show(n, 1)) }
+    rt_fail3(op, " needs a shift count in 0..31, got ", rt_show(n, 1))
+  }
+  return c
+}
+fn rt_mixed(op, a, b) {
+  let sb = rt_sb_new()
+  rt_sb_str(sb, op)
+  rt_sb_str(sb, " does not mix int and num (got ")
+  rt_sb_str(sb, rt_type_name(a))
+  rt_sb_str(sb, " and ")
+  rt_sb_str(sb, rt_type_name(b))
+  rt_sb_str(sb, "): convert explicitly with int(x) or num(x)")
+  return rt_die_lit(rt_sb_done(sb))
+}
+fn rt_bitop(op, a, b) {
+  let name = rt_bitname(op)
+  if op <= 3 {
+    if rt_is_int(a) or rt_is_int(b) {
+      if not (rt_is_int(a) and rt_is_int(b)) { rt_mixed(name, a, b) }
+      let x = rt_intval(a)
+      let y = rt_intval(b)
+      if op == 1 { return rt_mkint(x & y) }
+      if op == 2 { return rt_mkint(x | y) }
+      return rt_mkint(x ^ y)
+    }
+    let wa = rt_word(a, name)
+    let wb = rt_word(b, name)
+    if op == 1 { return rt_mknum(wa & wb) }
+    if op == 2 { return rt_mknum(wa | wb) }
+    return rt_mknum(wa ^ wb)
+  }
+  if rt_is_int(a) {
+    let c = rt_count(b, name, 63)
+    let x = rt_intval(a)
+    if op == 4 { return rt_mkint(x << c) }
+    if op == 5 { return rt_mkint(x >> c) }
+    return rt_mkint(shr_u(x, c))
+  }
+  let w = rt_word(a, name)
+  let c = rt_count(b, name, 31)
+  if op == 4 { return rt_mknum((w << c) & 4294967295) }
+  return rt_mknum(shr_u(w, c))
+}
+fn rt_bitname(op) {
+  if op == 1 { return "&" }
+  if op == 2 { return "|" }
+  if op == 3 { return "^" }
+  if op == 4 { return "<<" }
+  if op == 5 { return ">>" }
+  return "shr_u"
+}
+fn rt_band(a, b) { return rt_bitop(1, a, b) }
+fn rt_bor(a, b) { return rt_bitop(2, a, b) }
+fn rt_bxor(a, b) { return rt_bitop(3, a, b) }
+fn rt_shl(a, b) { return rt_bitop(4, a, b) }
+fn rt_sar(a, b) { return rt_bitop(5, a, b) }
+fn rt_shr_u(a, b) {
+  if not rt_is_int(a) { rt_fail2("shr_u needs an int, got ", rt_type_name(a)) }
+  return rt_bitop(6, a, b)
+}
+fn rt_bnot(a) {
+  if rt_is_int(a) { return rt_mkint(-1 - rt_intval(a)) }
+  return rt_mknum((-1 - rt_word(a, "~")) & 4294967295)
+}
+
+// ── equality and order ───────────────────────────────────────────────────────
+fn rt_eq_raw(a, b) {
+  if a == b { return 1 }
+  let ta = a & 7
+  let tb = b & 7
+  if ta != 0 or tb != 0 {
+    // a boxed int equals a small int of the same value only if both are ints (it never does: small ones are never boxed)
+    return 0
+  }
+  if a == 0 or b == 0 { return 0 }
+  let k = mem_get(a)
+  if k != mem_get(b) { return 0 }
+  if k == K_STR { return rt_str_eq(a, b) }
+  if k == K_INT { return mem_get(a + 8) == mem_get(b + 8) }
+  if k == K_BYTES {
+    let n = mem_get(a + 8)
+    if n != mem_get(b + 8) { return 0 }
+    var i = 0
+    while i < n {
+      if mem_get8(a + 16 + i) != mem_get8(b + 16 + i) { return 0 }
+      i = i + 1
+    }
+    return 1
+  }
+  if k == K_LIST {
+    let n = mem_get(a + 8)
+    if n != mem_get(b + 8) { return 0 }
+    var i = 0
+    while i < n {
+      if not rt_eq_raw(rt_list_get(a, i), rt_list_get(b, i)) { return 0 }
+      i = i + 1
+    }
+    return 1
+  }
+  if k == K_MAP {
+    let n = mem_get(a + 8)
+    if n != mem_get(b + 8) { return 0 }
+    var i = 0
+    while i < n {
+      let key = mem_get(mem_get(a + 24) + i * 8)
+      let e = rt_map_find(b, key)
+      if e < 0 { return 0 }
+      if not rt_eq_raw(mem_get(mem_get(a + 32) + i * 8), mem_get(mem_get(b + 32) + e * 8)) { return 0 }
+      i = i + 1
+    }
+    return 1
+  }
+  return 0
+}
+fn rt_eq(a, b) { return rt_bool(rt_eq_raw(a, b)) }
+fn rt_ne(a, b) { return rt_bool(not rt_eq_raw(a, b)) }
+fn rt_order(op, a, b) {
+  if (a & 7) == 1 and (b & 7) == 1 { return a - b }
+  if rt_is_int(a) and rt_is_int(b) {
+    let x = rt_intval(a)
+    let y = rt_intval(b)
+    if x < y { return -1 }
+    if x > y { return 1 }
+    return 0
+  }
+  if rt_kind(a) == K_STR and rt_kind(b) == K_STR { return rt_str_cmp(a, b) }
+  let sb = rt_sb_new()
+  rt_sb_str(sb, op)
+  rt_sb_str(sb, " compares two nums, two ints or two strings, got ")
+  rt_sb_str(sb, rt_type_name(a))
+  rt_sb_str(sb, " and ")
+  rt_sb_str(sb, rt_type_name(b))
+  return rt_die_lit(rt_sb_done(sb))
+}
+fn rt_lt(a, b) { return rt_bool(rt_order("<", a, b) < 0) }
+fn rt_le(a, b) { return rt_bool(rt_order("<=", a, b) <= 0) }
+fn rt_gt(a, b) { return rt_bool(rt_order(">", a, b) > 0) }
+fn rt_ge(a, b) { return rt_bool(rt_order(">=", a, b) >= 0) }
+fn rt_contains(a, b) {
+  let k = rt_kind(a)
+  if k == K_LIST {
+    let n = mem_get(a + 8)
+    var i = 0
+    while i < n {
+      if rt_eq_raw(rt_list_get(a, i), b) { return TRUE }
+      i = i + 1
+    }
+    return FALSE
+  }
+  if k == K_STR and rt_kind(b) == K_STR { return rt_bool(rt_str_find(a, b) >= 0) }
+  if k == K_MAP { return rt_bool(rt_kind(b) == K_STR and rt_map_find(a, b) >= 0) }
+  return rt_fail2("contains needs a list, string or map, got ", rt_type_name(a))
+}
+fn rt_starts_with(a, b) {
+  if rt_kind(a) != K_STR or rt_kind(b) != K_STR { rt_fail("starts_with needs two strings") }
+  let m = mem_get(b + 8)
+  if m > mem_get(a + 8) { return FALSE }
+  var i = 0
+  while i < m {
+    if mem_get8(a + 24 + i) != mem_get8(b + 24 + i) { return FALSE }
+    i = i + 1
+  }
+  return TRUE
+}
+fn rt_ends_with(a, b) {
+  if rt_kind(a) != K_STR or rt_kind(b) != K_STR { rt_fail("ends_with needs two strings") }
+  let n = mem_get(a + 8)
+  let m = mem_get(b + 8)
+  if m > n { return FALSE }
+  var i = 0
+  while i < m {
+    if mem_get8(a + 24 + n - m + i) != mem_get8(b + 24 + i) { return FALSE }
+    i = i + 1
+  }
+  return TRUE
+}
+
+// ── indexing ─────────────────────────────────────────────────────────────────
+fn rt_index_num(i) {
+  if (i & 7) == 1 { return i >> 3 }
+  if rt_is_int(i) { return rt_intval(i) }
+  return rt_fail2("an index must be a num or an int, got ", rt_type_name(i))
+}
+fn rt_range_error(i, what, n) {
+  let sb = rt_sb_new()
+  rt_sb_str(sb, "index ")
+  rt_sb_dec(sb, i)
+  rt_sb_str(sb, " is out of range for a ")
+  rt_sb_str(sb, what)
+  rt_sb_str(sb, " of ")
+  rt_sb_dec(sb, n)
+  return rt_die_lit(rt_sb_done(sb))
+}
+fn rt_index(o, i) {
+  let k = rt_kind(o)
+  if k == K_MAP { return rt_map_get(o, i) }
+  if k == K_LIST {
+    let n = mem_get(o + 8)
+    var x = rt_index_num(i)
+    let orig = x
+    if x < 0 { x = x + n }
+    if x < 0 or x >= n { rt_range_error(orig, "list", n) }
+    return rt_list_get(o, x)
+  }
+  if k == K_STR {
+    let n = mem_get(o + 16)
+    var x = rt_index_num(i)
+    let orig = x
+    if x < 0 { x = x + n }
+    if x < 0 or x >= n { rt_range_error(orig, "string", n) }
+    return rt_str_slice(o, x, x + 1)
+  }
+  if k == K_BYTES {
+    let n = mem_get(o + 8)
+    var x = rt_index_num(i)
+    let orig = x
+    if x < 0 { x = x + n }
+    if x < 0 or x >= n { rt_range_error(orig, "bytes", n) }
+    return rt_mknum(mem_get8(o + 16 + x))
+  }
+  return rt_fail2("cannot index a ", rt_type_name(o))
+}
+fn rt_setindex(o, i, v) {
+  let k = rt_kind(o)
+  if k == K_MAP { return rt_map_set(o, i, v) }
+  if k == K_LIST {
+    let n = mem_get(o + 8)
+    var x = rt_index_num(i)
+    let orig = x
+    if x < 0 { x = x + n }
+    if x == n { return rt_list_push(o, v) }
+    if x < 0 or x > n { rt_range_error(orig, "list", n) }
+    mem_set(mem_get(o + 24) + x * 8, v)
+    return o
+  }
+  return rt_fail2("cannot assign into a ", rt_type_name(o))
+}
+fn rt_member(o, name) {
+  if rt_kind(o) == K_MAP { return rt_map_get(o, name) }
+  return rt_fail3("a ", rt_type_name(o), " has no fields")
+}
+fn rt_setmember(o, name, v) {
+  if rt_kind(o) == K_MAP { return rt_map_set(o, name, v) }
+  return rt_fail3("a ", rt_type_name(o), " has no fields")
+}
+fn rt_coalesce_null(a) { return a == NULL }
+
+// ── for loops: everything iterates as a list ─────────────────────────────────
+fn rt_iter(c) {
+  let k = rt_kind(c)
+  if k == K_LIST { return c }
+  if k == K_MAP { return rt_b_keys(c) }
+  if k == K_STR {
+    let n = mem_get(c + 16)
+    let l = rt_list_new(n)
+    var i = 0
+    while i < n {
+      rt_list_push(l, rt_str_slice(c, i, i + 1))
+      i = i + 1
+    }
+    return l
+  }
+  if k == K_BYTES {
+    let n = mem_get(c + 8)
+    let l = rt_list_new(n)
+    var i = 0
+    while i < n {
+      rt_list_push(l, rt_mknum(mem_get8(c + 16 + i)))
+      i = i + 1
+    }
+    return l
+  }
+  return rt_fail2("cannot iterate over a ", rt_type_name(c))
+}
+fn rt_iter_second(c, i, item) {
+  // the second loop variable: a map's value for its key; otherwise the item itself
+  if rt_kind(c) == K_MAP { return rt_map_get(c, item) }
+  return item
+}
+fn rt_iter_first(c, i, item) {
+  // with two variables: a map gives its key; everything else its index
+  if rt_kind(c) == K_MAP { return item }
+  return i
+}
+fn rt_range_next(i) {
+  if (i & 7) == 1 { return rt_mknum((i >> 3) + 1) }
+  let v = rt_intval(i)
+  if add_ovf(v, 1) { rt_ovf("..") }
+  return rt_mkint(v + 1)
+}
+fn rt_range_check(a, b) {
+  if ((a & 7) == 1 and (b & 7) == 1) or (rt_is_int(a) and rt_is_int(b)) { return 0 }
+  return rt_num_or_int_error("..", a, b)
+}
+
+// ── functions as values ──────────────────────────────────────────────────────
+// K_FN [kind][code address][most arguments][environment: a list of cells, or 0][name][fewest arguments]. A compiled
+// function receives its closure as a hidden last argument; a captured variable lives in a cell (one heap word) shared
+// by reference. Builtins used as values may take a range of arguments; they read how many from rt_nargs.
+fn rt_closure_new(code, nparams, env, name) {
+  let f = rt_alloc(48)
+  mem_set(f, K_FN)
+  mem_set(f + 8, code)
+  mem_set(f + 16, nparams)
+  mem_set(f + 24, env)
+  mem_set(f + 32, name)
+  mem_set(f + 40, nparams)
+  return f
+}
+fn rt_cell_new(v) {
+  let c = rt_alloc(8)
+  mem_set(c, v)
+  return c
+}
+// before calling a value: it must be a fn that takes nargs arguments; gives its code address
+fn rt_call_check(f, nargs) {
+  if rt_kind(f) != K_FN { rt_fail3("cannot call ", rt_type_name(f), " — only fn values can be called") }
+  let most = mem_get(f + 16)
+  let fewest = mem_get(f + 40)
+  if nargs < fewest or nargs > most {
+    let sb = rt_sb_new()
+    rt_sb_str(sb, mem_get(f + 32))
+    rt_sb_str(sb, " takes ")
+    rt_sb_dec(sb, fewest)
+    if most != fewest {
+      rt_sb_str(sb, " to ")
+      rt_sb_dec(sb, most)
+    }
+    rt_sb_str(sb, " argument(s), got ")
+    rt_sb_dec(sb, nargs)
+    rt_die_lit(rt_sb_done(sb))
+  }
+  rt_nargs = nargs
+  return mem_get(f + 8)
+}
+fn rt_b_truthy(v, who) {
+  if v == TRUE { return TRUE }
+  if v == FALSE { return FALSE }
+  let sb = rt_sb_new()
+  rt_sb_str(sb, rt_tostr(who))
+  rt_sb_str(sb, " needs a bool, got ")
+  rt_sb_str(sb, rt_type_name(v))
+  rt_sb_byte(sb, 32)
+  rt_show_into(sb, v, 1)
+  return rt_die_lit(rt_sb_done(sb))
+}
+fn rt_pow(a, b) {
+  if rt_is_int(a) and rt_is_int(b) {
+    let x = rt_intval(a)
+    var y = rt_intval(b)
+    if y < 0 { rt_fail("int ** needs a non-negative exponent") }
+    if x == 0 or x == 1 {
+      if y == 0 { return rt_mkint(1) }
+      return a
+    }
+    if x == -1 {
+      if (y & 1) == 0 { return rt_mkint(1) }
+      return a
+    }
+    if y > 63 { rt_fail("int overflow in **: result does not fit in 64 bits") }
+    var r = 1
+    while y > 0 {
+      if mul_ovf(r, x) { rt_ovf("**") }
+      r = r * x
+      y = y - 1
+    }
+    return rt_mkint(r)
+  }
+  if (a & 7) == 1 and (b & 7) == 1 { return rt_num_pow(a, b) }
+  return rt_num_or_int_error("**", a, b)
+}
+
+// ── builtins ─────────────────────────────────────────────────────────────────
+fn rt_b_len(x) {
+  let k = rt_kind(x)
+  if k == K_STR { return rt_mknum(mem_get(x + 16)) }
+  if k == K_LIST or k == K_MAP or k == K_BYTES { return rt_mknum(mem_get(x + 8)) }
+  return rt_fail2("len needs a string, list or map, got ", rt_type_name(x))
+}
+fn rt_b_byte_len(x) {
+  let k = rt_kind(x)
+  if k == K_STR or k == K_BYTES { return rt_mknum(mem_get(x + 8)) }
+  return rt_fail2("byte_len needs a string or bytes, got ", rt_type_name(x))
+}
+fn rt_b_str(x) { return rt_show(x, 0) }
+fn rt_b_repr(x) { return rt_show(x, 1) }
+fn rt_b_type_of(x) { return rt_type_name(x) }
+fn rt_parse_int(s, what) {
+  let n = mem_get(s + 8)
+  var i = 0
+  var neg = 0
+  if n > 0 and mem_get8(s + 24) == 45 {
+    neg = 1
+    i = 1
+  }
+  if i >= n { rt_fail3(what, " cannot read ", rt_show(s, 1)) }
+  var v = 0
+  while i < n {
+    let c = mem_get8(s + 24 + i)
+    if c < 48 or c > 57 { rt_fail3(what, " cannot read ", rt_show(s, 1)) }
+    if mul_ovf(v, 10) or sub_ovf(v * 10, c - 48) { rt_ovf("int()") }
+    v = v * 10 - (c - 48)
+    i = i + 1
+  }
+  if neg { return v }
+  if sub_ovf(0, v) { rt_ovf("int()") }
+  return 0 - v
+}
+fn rt_b_int(x) {
+  if (x & 7) == 1 { return rt_mkint(x >> 3) }
+  if rt_is_int(x) { return x }
+  if rt_kind(x) == K_STR { return rt_mkint(rt_parse_int(x, "int")) }
+  return rt_fail2("int needs a num, an int or a string, got ", rt_type_name(x))
+}
+fn rt_b_num(x) {
+  if (x & 7) == 1 { return x }
+  if rt_is_int(x) { return rt_mknum(rt_intval(x)) }
+  if rt_kind(x) == K_STR { return rt_mknum(rt_parse_int(x, "num")) }
+  return rt_fail2("num needs a num, an int or a string, got ", rt_type_name(x))
+}
+fn rt_b_has(m, k) {
+  if rt_kind(m) == K_MAP { return rt_bool(rt_kind(k) == K_STR and rt_map_find(m, k) >= 0) }
+  return rt_fail2("has needs a map, got ", rt_type_name(m))
+}
+fn rt_b_get(m, k, d) {
+  if rt_kind(m) == K_MAP {
+    if rt_kind(k) != K_STR { return d }
+    let e = rt_map_find(m, k)
+    if e < 0 { return d }
+    return mem_get(mem_get(m + 32) + e * 8)
+  }
+  if rt_kind(m) == K_LIST {
+    let n = mem_get(m + 8)
+    var x = rt_index_num(k)
+    if x < 0 { x = x + n }
+    if x < 0 or x >= n { return d }
+    return rt_list_get(m, x)
+  }
+  return rt_fail2("get needs a map or a list, got ", rt_type_name(m))
+}
+fn rt_b_keys(m) {
+  if rt_kind(m) != K_MAP { rt_fail2("keys needs a map, got ", rt_type_name(m)) }
+  let n = mem_get(m + 8)
+  let l = rt_list_new(n)
+  var i = 0
+  while i < n {
+    rt_list_push(l, mem_get(mem_get(m + 24) + i * 8))
+    i = i + 1
+  }
+  return l
+}
+fn rt_b_values(m) {
+  if rt_kind(m) != K_MAP { rt_fail2("values needs a map, got ", rt_type_name(m)) }
+  let n = mem_get(m + 8)
+  let l = rt_list_new(n)
+  var i = 0
+  while i < n {
+    rt_list_push(l, mem_get(mem_get(m + 32) + i * 8))
+    i = i + 1
+  }
+  return l
+}
+fn rt_clamp(x, n) {
+  var v = x
+  if v < 0 { v = v + n }
+  if v < 0 { v = 0 }
+  if v > n { v = n }
+  return v
+}
+fn rt_b_slice(x, a, b) {
+  let k = rt_kind(x)
+  var n = 0
+  if k == K_STR { n = mem_get(x + 16) } else if k == K_LIST or k == K_BYTES { n = mem_get(x + 8) } else {
+    rt_fail2("slice needs a string, list or bytes, got ", rt_type_name(x))
+  }
+  let s = rt_clamp(rt_index_num(a), n)
+  var e = n
+  if b != NULL { e = rt_clamp(rt_index_num(b), n) }
+  if e < s { e = s }
+  if k == K_STR { return rt_str_slice(x, s, e) }
+  if k == K_BYTES {
+    let r = rt_bytes_new(e - s)
+    mem_copy(r + 16, x + 16 + s, e - s)
+    return r
+  }
+  let l = rt_list_new(e - s)
+  var i = s
+  while i < e {
+    rt_list_push(l, rt_list_get(x, i))
+    i = i + 1
+  }
+  return l
+}
+fn rt_b_push(l, v) {
+  if rt_kind(l) != K_LIST { rt_fail2("push needs a list, got ", rt_type_name(l)) }
+  let n = mem_get(l + 8)
+  let r = rt_list_new(n + 1)
+  var i = 0
+  while i < n {
+    rt_list_push(r, rt_list_get(l, i))
+    i = i + 1
+  }
+  return rt_list_push(r, v)
+}
+fn rt_b_bytes(x) {
+  let sb = rt_sb_new()
+  rt_bytes_flatten(sb, x)
+  let n = mem_get(sb + 8)
+  let r = rt_bytes_new(n)
+  mem_copy(r + 16, mem_get(sb), n)
+  return r
+}
+fn rt_b_range(a, b, step) {
+  var lo = a
+  var hi = b
+  var st = step
+  if hi == NULL {
+    hi = lo
+    lo = 1          // the num 0, tagged
+  }
+  if st == NULL { st = 9 }          // the num 1, tagged
+  if (lo & 7) != 1 or (hi & 7) != 1 or (st & 7) != 1 { rt_fail("range needs ints") }
+  let s = st >> 3
+  if s == 0 { rt_fail("range step cannot be 0") }
+  let l = rt_list_new(0)
+  var i = lo >> 3
+  let e = hi >> 3
+  if s > 0 {
+    while i < e {
+      rt_list_push(l, rt_mknum(i))
+      i = i + s
+    }
+  } else {
+    while i > e {
+      rt_list_push(l, rt_mknum(i))
+      i = i + s
+    }
+  }
+  return l
+}
+fn rt_b_join(l, sep) {
+  if rt_kind(l) != K_LIST { rt_fail2("join needs a list, got ", rt_type_name(l)) }
+  let sb = rt_sb_new()
+  let n = mem_get(l + 8)
+  var i = 0
+  while i < n {
+    if i > 0 and sep != NULL {
+      if rt_kind(sep) != K_STR { rt_fail2("join needs a string separator, got ", rt_type_name(sep)) }
+      rt_sb_str(sb, sep)
+    }
+    rt_sb_str(sb, rt_tostr(rt_list_get(l, i)))
+    i = i + 1
+  }
+  return rt_sb_done(sb)
+}
+fn rt_need_str(s, who) {
+  if rt_kind(s) != K_STR { rt_fail3(who, " needs a string, got ", rt_type_name(s)) }
+  return s
+}
+// code points before byte offset off
+fn rt_cp_count(s, off) {
+  var c = 0
+  var i = 0
+  while i < off {
+    if (mem_get8(s + 24 + i) & 192) != 128 { c = c + 1 }
+    i = i + 1
+  }
+  return c
+}
+fn rt_b_split(s, sep) {
+  rt_need_str(s, "split")
+  rt_need_str(sep, "split")
+  let n = mem_get(s + 8)
+  let m = mem_get(sep + 8)
+  let l = rt_list_new(0)
+  if m == 0 {
+    // every code point
+    var i = 0
+    while i < n {
+      var j = i + 1
+      while j < n and (mem_get8(s + 24 + j) & 192) == 128 { j = j + 1 }
+      rt_list_push(l, rt_str_from(s + 24 + i, j - i))
+      i = j
+    }
+    return l
+  }
+  var start = 0
+  var i = 0
+  while i + m <= n {
+    var k = 0
+    while k < m and mem_get8(s + 24 + i + k) == mem_get8(sep + 24 + k) { k = k + 1 }
+    if k == m {
+      rt_list_push(l, rt_str_from(s + 24 + start, i - start))
+      i = i + m
+      start = i
+    } else {
+      i = i + 1
+    }
+  }
+  rt_list_push(l, rt_str_from(s + 24 + start, n - start))
+  return l
+}
+fn rt_b_find_text(s, sub) {
+  rt_need_str(s, "find_text")
+  rt_need_str(sub, "find_text")
+  let at = rt_str_find(s, sub)
+  if at < 0 { return rt_mknum(-1) }
+  return rt_mknum(rt_cp_count(s, at))
+}
+fn rt_b_raise(msg) { return rt_die_lit(rt_tostr(msg)) }
+fn rt_b_floor(x) {
+  if (x & 7) == 1 { return x }
+  return rt_fail2("floor needs a num, got ", rt_type_name(x))
+}
+// min / max: of their arguments, or of one list argument. All ints → an int; otherwise every value must be a num.
+fn rt_minmax(args, want_max, who) {
+  var xs = args
+  if mem_get(args + 8) == 1 and rt_kind(rt_list_get(args, 0)) == K_LIST { xs = rt_list_get(args, 0) }
+  let n = mem_get(xs + 8)
+  if n == 0 { rt_fail2(who, " of nothing") }
+  var all_int = 1
+  var i = 0
+  while i < n {
+    let v = rt_list_get(xs, i)
+    if not rt_is_int(v) { all_int = 0 }
+    i = i + 1
+  }
+  if not all_int {
+    i = 0
+    while i < n {
+      if (rt_list_get(xs, i) & 7) != 1 { rt_fail3(who, " needs a num, got ", rt_type_name(rt_list_get(xs, i))) }
+      i = i + 1
+    }
+  }
+  var best = rt_list_get(xs, 0)
+  i = 1
+  while i < n {
+    let v = rt_list_get(xs, i)
+    let c = rt_order(who, v, best)
+    if (want_max and c > 0) or (not want_max and c < 0) { best = v }
+    i = i + 1
+  }
+  return best
+}
+fn rt_b_min(args) { return rt_minmax(args, 0, "min") }
+fn rt_b_max(args) { return rt_minmax(args, 1, "max") }
+
+// utf8(bytes) → string. Strict (CIE-EG 2.2): overlong forms, surrogates, code points above U+10FFFF, bad continuation
+// bytes and truncated sequences are refused, naming the offset of the first byte of the bad sequence.
+fn rt_utf8_len(b0) {
+  if b0 <= 127 { return 1 }
+  if b0 >= 194 and b0 <= 223 { return 2 }
+  if b0 >= 224 and b0 <= 239 { return 3 }
+  if b0 >= 240 and b0 <= 244 { return 4 }
+  return 0
+}
+fn rt_utf8_bad(at) {
+  let sb = rt_sb_new()
+  rt_sb_str(sb, "invalid UTF-8 at byte ")
+  rt_sb_dec(sb, at)
+  return rt_die_lit(rt_sb_done(sb))
+}
+fn rt_b_utf8(v) {
+  if rt_kind(v) != K_BYTES { rt_fail2("utf8 needs bytes, got ", rt_type_name(v)) }
+  let n = mem_get(v + 8)
+  let p = v + 16
+  var i = 0
+  while i < n {
+    let b0 = mem_get8(p + i)
+    let k = rt_utf8_len(b0)
+    if k == 0 or i + k > n { rt_utf8_bad(i) }
+    var cp = b0
+    if k == 2 { cp = b0 & 31 }
+    if k == 3 { cp = b0 & 15 }
+    if k == 4 { cp = b0 & 7 }
+    var j = 1
+    while j < k {
+      let c = mem_get8(p + i + j)
+      if (c & 192) != 128 { rt_utf8_bad(i) }
+      cp = (cp << 6) | (c & 63)
+      j = j + 1
+    }
+    if (k == 2 and cp < 128) or (k == 3 and cp < 2048) or (k == 4 and cp < 65536) { rt_utf8_bad(i) }
+    if (cp >= 55296 and cp <= 57343) or cp > 1114111 { rt_utf8_bad(i) }
+    i = i + k
+  }
+  return rt_str_from(p, n)
+}
+
+// ── files and arguments ──────────────────────────────────────────────────────
+fn rt_cpath(s) {
+  if rt_kind(s) != K_STR { rt_fail2("a path must be a string, got ", rt_type_name(s)) }
+  let n = mem_get(s + 8)
+  let p = rt_alloc(n + 1)
+  mem_copy(p, s + 24, n)
+  mem_set8(p + n, 0)
+  return p
+}
+fn rt_read_all(path) {
+  let fd = sys6(2, rt_cpath(path), 0, 0, 0, 0)
+  if fd < 0 { rt_fail2("cannot read ", rt_tostr(path)) }
+  let sb = rt_sb_new()
+  while 1 {
+    rt_sb_room(sb, 65536)
+    let r = sys6(0, fd, mem_get(sb) + mem_get(sb + 8), 65536, 0, 0)
+    if r < 0 { rt_fail2("cannot read ", rt_tostr(path)) }
+    if r == 0 { break }
+    mem_set(sb + 8, mem_get(sb + 8) + r)
+  }
+  sys6(3, fd, 0, 0, 0, 0)
+  return sb
+}
+fn rt_b_read_file(path) {
+  let sb = rt_read_all(path)
+  return rt_str_from(mem_get(sb), mem_get(sb + 8))
+}
+fn rt_b_read_bytes(path) {
+  let sb = rt_read_all(path)
+  let n = mem_get(sb + 8)
+  let r = rt_bytes_new(n)
+  mem_copy(r + 16, mem_get(sb), n)
+  return r
+}
+fn rt_write_path(path, p, n) {
+  // open(path, O_WRONLY|O_CREAT|O_TRUNC, 0644)
+  let fd = sys6(2, rt_cpath(path), 577, 420, 0, 0)
+  if fd < 0 { rt_fail2("cannot write ", rt_tostr(path)) }
+  rt_write(fd, p, n)
+  sys6(3, fd, 0, 0, 0, 0)
+  return NULL
+}
+fn rt_b_write_file(path, text) {
+  let s = rt_tostr(text)
+  return rt_write_path(path, s + 24, mem_get(s + 8))
+}
+fn rt_b_write_bytes(path, b) {
+  if rt_kind(b) != K_BYTES { rt_fail2("write_bytes needs bytes, got ", rt_type_name(b)) }
+  return rt_write_path(path, b + 16, mem_get(b + 8))
+}
+fn rt_b_chmod_exec(path) {
+  sys6(90, rt_cpath(path), 493, 0, 0, 0)
+  return NULL
+}
+fn rt_b_args() {
+  let argc = mem_get(rt_sp)
+  let l = rt_list_new(argc)
+  var i = 1
+  while i < argc {
+    let p = mem_get(rt_sp + 8 + i * 8)
+    var n = 0
+    while mem_get8(p + n) != 0 { n = n + 1 }
+    rt_list_push(l, rt_str_from(p, n))
+    i = i + 1
+  }
+  return l
+}
+fn rt_exit(code) {
+  sys6(60, code, 0, 0, 0, 0)
+  return 0
+}

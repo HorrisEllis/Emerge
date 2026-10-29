@@ -38,7 +38,7 @@ function validatePrimitives(P) {
   const bool = (v, at) => { if (typeof v !== 'boolean') bad.push(`${at} must be a bool`); };
   const obj = (v, at) => { if (!isObj(v)) { bad.push(`${at} must be a map`); return false; } return true; };
   if (!obj(P, 'primitives')) return bad;
-  const known = ['constraint_types', 'gaps', 'signals', 'truth', 'dispatch', 'transitions', 'components', 'diagnostics'];
+  const known = ['constraint_types', 'gaps', 'signals', 'truth', 'dispatch', 'ledger', 'transitions', 'components', 'diagnostics', 'observe'];
   for (const k of Object.keys(P)) if (!known.includes(k)) bad.push(`unknown section "${k}" — the sections are ${known.join(', ')}`);
   if (obj(P.constraint_types, 'constraint_types')) {
     if (!Object.keys(P.constraint_types).length) bad.push('constraint_types is empty');
@@ -70,6 +70,10 @@ function validatePrimitives(P) {
     if (new Set(names).size !== names.length) bad.push('signals: the three runtime signal names must differ');
   }
   if (obj(P.truth, 'truth')) bool(P.truth.strict, 'truth.strict');
+  if (obj(P.ledger, 'ledger')) {
+    num(P.ledger.checkpoint_every, 'ledger.checkpoint_every');
+    if (!Number.isInteger(P.ledger.checkpoint_every) || P.ledger.checkpoint_every < 1) bad.push('ledger.checkpoint_every must be a whole number, at least 1');
+  }
   if (obj(P.dispatch, 'dispatch')) {
     num(P.dispatch.max_deliveries, 'dispatch.max_deliveries');
     if (!(P.dispatch.max_deliveries >= 1)) bad.push('dispatch.max_deliveries must be at least 1');
@@ -85,7 +89,82 @@ function validatePrimitives(P) {
     for (const r of RULES) if (!SEVERITIES.includes(P.diagnostics[r])) bad.push(`diagnostics.${r} must be "error", "warning" or "off"`);
     for (const k of Object.keys(P.diagnostics)) if (!RULES.includes(k)) bad.push(`diagnostics.${k} is not a rule — the rules are ${RULES.join(', ')}`);
   }
+  if (obj(P.observe, 'observe') && isObj(P.gaps)) validateObserve(P.observe, P.gaps, bad);
   return bad;
+}
+
+// ── the observe section (CIE-EG §13): structure and ranges only — every value lives in primitives.eg ─────────────────
+const ENTRY_KINDS = ['genesis', 'boot', 'register', 'compartment', 'wire', 'unwire', 'despawn', 'deliver', 'gap', 'gap.ack', 'gap.close', 'transition', 'rejected', 'checkpoint', 'rekey', 'record', 'unrouted', 'aborted', 'promote', 'promotion_refused', 'whatif', 'axiom', 'write'];
+const FIELD_DIMS = ['coherence', 'friction', 'resonance', 'entropy'];
+function validateObserve(O, G, bad) {
+  const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+  const num = (v, at, lo = -Infinity, hi = Infinity) => { if (typeof v !== 'number' || !Number.isFinite(v)) bad.push(`${at} must be a num`); else if (v < lo || v > hi) bad.push(`${at} must be between ${lo} and ${hi}`); };
+  const whole = (v, at, lo = 1) => { if (!Number.isInteger(v) || v < lo) bad.push(`${at} must be a whole number, at least ${lo}`); };
+  const obj = (v, at) => { if (!isObj(v)) { bad.push(`${at} must be a map`); return false; } return true; };
+  const only = (v, at, keys) => { for (const k of Object.keys(v)) if (!keys.includes(k)) bad.push(`${at}.${k} is not a key here — the keys are ${keys.join(', ')}`); for (const k of keys) if (!(k in v)) bad.push(`${at}.${k} is missing`); };
+  const gapType = (v, at) => { if (!G.types.includes(v)) bad.push(`${at} must be one of gaps.types`); };
+  const pressure = (v, at) => num(v, at, G.pressure_min, G.pressure_max);
+  if (typeof O.version !== 'string' || !O.version) bad.push('observe.version must be a non-empty string');
+  const known = ['version', 'field', 'deviation', 'sigma', 'liminal', 'gaps'];
+  for (const k of Object.keys(O)) if (!known.includes(k)) bad.push(`observe.${k} is not a section — the sections are ${known.join(', ')}`);
+
+  if (obj(O.field, 'observe.field')) {
+    const F = O.field;
+    num(F.neutral, 'observe.field.neutral', 0, 1); num(F.damping, 'observe.field.damping', 0, 1);
+    for (const k of ['repeat_step', 'repeat_relief', 'deviation_entropy', 'deviation_friction']) num(F[k], `observe.field.${k}`, 0, 1);
+    whole(F.repeat_window, 'observe.field.repeat_window'); num(F.deviation_full_z, 'observe.field.deviation_full_z', 1e-9);
+    if (obj(F.start, 'observe.field.start')) { only(F.start, 'observe.field.start', FIELD_DIMS); for (const d of FIELD_DIMS) num(F.start[d], `observe.field.start.${d}`, 0, 1); }
+    if (!Array.isArray(F.pressure_scaled) || !F.pressure_scaled.every(k => ENTRY_KINDS.includes(k))) bad.push('observe.field.pressure_scaled must be a list of entry kinds');
+    if (obj(F.regimes, 'observe.field.regimes')) { const ks = ['chaotic_entropy', 'chaotic_coherence', 'turbulent_friction', 'turbulent_resonance', 'resonant_coherence', 'resonant_entropy']; only(F.regimes, 'observe.field.regimes', ks); for (const k of ks) num(F.regimes[k], `observe.field.regimes.${k}`, 0, 1); }
+    if (obj(F.nudges, 'observe.field.nudges')) for (const [kind, n] of Object.entries(F.nudges)) {
+      if (!ENTRY_KINDS.includes(kind)) bad.push(`observe.field.nudges.${kind} is not an entry kind`);
+      if (obj(n, `observe.field.nudges.${kind}`)) for (const [d, v] of Object.entries(n)) { if (!FIELD_DIMS.includes(d)) bad.push(`observe.field.nudges.${kind}.${d} is not a field dimension`); else num(v, `observe.field.nudges.${kind}.${d}`, -1, 1); }
+    }
+  }
+  if (obj(O.deviation, 'observe.deviation')) {
+    const D = O.deviation;
+    only(D, 'observe.deviation', ['window', 'min_samples', 'tick_floor', 'z_flag', 'rate_window', 'flip_z']);
+    whole(D.window, 'observe.deviation.window'); whole(D.min_samples, 'observe.deviation.min_samples', 2); whole(D.rate_window, 'observe.deviation.rate_window');
+    num(D.tick_floor, 'observe.deviation.tick_floor', 1e-9); num(D.z_flag, 'observe.deviation.z_flag', 0); num(D.flip_z, 'observe.deviation.flip_z', 0);
+  }
+  if (obj(O.sigma, 'observe.sigma')) {
+    const S = O.sigma;
+    only(S, 'observe.sigma', ['window', 'min_window', 'slope_threshold', 'accel_threshold', 'oscillation_count']);
+    whole(S.window, 'observe.sigma.window'); whole(S.min_window, 'observe.sigma.min_window'); whole(S.oscillation_count, 'observe.sigma.oscillation_count');
+    num(S.slope_threshold, 'observe.sigma.slope_threshold', 0); num(S.accel_threshold, 'observe.sigma.accel_threshold', 0, 1);
+    if (Number.isInteger(S.window) && Number.isInteger(S.min_window) && S.min_window > S.window) bad.push('observe.sigma.min_window is above observe.sigma.window');
+  }
+  if (obj(O.liminal, 'observe.liminal')) {
+    const M = O.liminal;
+    only(M, 'observe.liminal', ['velocity', 'surface', 'crystal']);
+    if (obj(M.velocity, 'observe.liminal.velocity')) {
+      const V = M.velocity;
+      num(V.decay, 'observe.liminal.velocity.decay', 0, 1); num(V.runaway, 'observe.liminal.velocity.runaway', 1e-9, 1);
+      gapType(V.gap_type, 'observe.liminal.velocity.gap_type'); pressure(V.gap_pressure, 'observe.liminal.velocity.gap_pressure');
+      if (obj(V.step, 'observe.liminal.velocity.step')) for (const [k, v] of Object.entries(V.step)) { if (!ENTRY_KINDS.includes(k)) bad.push(`observe.liminal.velocity.step.${k} is not an entry kind`); num(v, `observe.liminal.velocity.step.${k}`, -1, 1); }
+    }
+    if (obj(M.surface, 'observe.liminal.surface')) { whole(M.surface.window, 'observe.liminal.surface.window'); whole(M.surface.flips, 'observe.liminal.surface.flips', 2); }
+    if (obj(M.crystal, 'observe.liminal.crystal')) { whole(M.crystal.min_count, 'observe.liminal.crystal.min_count'); num(M.crystal.min_confidence, 'observe.liminal.crystal.min_confidence', 0, 1); }
+  }
+  if (obj(O.gaps, 'observe.gaps')) {
+    const A = O.gaps;
+    only(A, 'observe.gaps', ['dedup_hex', 'regime_types', 'regime_pressure', 'field_types', 'field_pressure', 'field_persist', 'crystal_types', 'crystal_pressure', 'block_at', 'tension']);
+    whole(A.dedup_hex, 'observe.gaps.dedup_hex', 8); if (Number.isInteger(A.dedup_hex) && A.dedup_hex > 64) bad.push('observe.gaps.dedup_hex must be at most 64 (a SHA-256 has 64 hex digits)');
+    whole(A.field_persist, 'observe.gaps.field_persist'); pressure(A.block_at, 'observe.gaps.block_at');
+    for (const [tk, pk, keys] of [['regime_types', 'regime_pressure', ['degraded', 'collapsing', 'oscillatory']], ['field_types', 'field_pressure', ['turbulent', 'chaotic']], ['crystal_types', 'crystal_pressure', ['refusal', 'unrouted']]]) {
+      if (obj(A[tk], `observe.gaps.${tk}`)) { only(A[tk], `observe.gaps.${tk}`, keys); for (const k of keys) gapType(A[tk][k], `observe.gaps.${tk}.${k}`); }
+      if (obj(A[pk], `observe.gaps.${pk}`)) { only(A[pk], `observe.gaps.${pk}`, keys); for (const k of keys) pressure(A[pk][k], `observe.gaps.${pk}.${k}`); }
+    }
+    if (obj(A.tension, 'observe.gaps.tension')) {
+      const T = A.tension;
+      only(T, 'observe.gaps.tension', ['weight_pressure', 'weight_age', 'weight_repeat', 'age_cap', 'repeat_cap', 'medium', 'high', 'critical']);
+      for (const k of ['weight_pressure', 'weight_age', 'weight_repeat']) num(T[k], `observe.gaps.tension.${k}`, 0, 1);
+      if (Math.abs(T.weight_pressure + T.weight_age + T.weight_repeat - 1) > 1e-9) bad.push('observe.gaps.tension: the three weights must add up to 1');
+      whole(T.age_cap, 'observe.gaps.tension.age_cap'); whole(T.repeat_cap, 'observe.gaps.tension.repeat_cap');
+      for (const k of ['medium', 'high', 'critical']) num(T[k], `observe.gaps.tension.${k}`, 0, 1);
+      if (!(T.medium <= T.high && T.high <= T.critical)) bad.push('observe.gaps.tension: medium, high and critical must not decrease');
+    }
+  }
 }
 
 function fail(stage, problems, report) {

@@ -21,7 +21,19 @@
 
 const fs = require('fs');
 const path = require('path');
-const nodeExport = require('../../node-export.js');
+// §2026-10-28 — read with emerge's own js-yaml. The schema files are plain YAML envelopes (envelope, uuid, type, id,
+// payload); the old reader, ../../node-export.js, lived in the Nexus tree above emerge/, so this file could not load
+// when emerge stood alone. James: "don't couple to nexus … everything from the ground up."
+const yaml = require('js-yaml');
+const nodeExport = {
+  importFromFile(file) {
+    const doc = yaml.load(fs.readFileSync(file, 'utf8'));
+    if (!doc || typeof doc !== 'object' || doc.envelope === undefined || !doc.type || !doc.id || !doc.payload) {
+      throw new Error(`emerge/schemas/index.js: ${path.basename(file)} is not a schema envelope (envelope, type, id, payload)`);
+    }
+    return doc;
+  },
+};
 
 const SCHEMAS_DIR = __dirname;
 
@@ -44,7 +56,7 @@ function get(type) { return SCHEMAS[type] || null; }
 
 /** list() -> every type emerge owns, all of them real, local files — no shared reference left. */
 function list() {
-  return Object.entries(SCHEMAS).map(([type, s]) => ({ type, status: s.status, source: s.source, definedIn: 'lib/emerge/schemas' }));
+  return Object.entries(SCHEMAS).map(([type, s]) => ({ type, status: s.status, source: s.source, definedIn: 'emerge/schemas' }));
 }
 
 module.exports = { get, list, SCHEMAS, MODULE_ID: 'emerge-schemas', VERSION: '2.0.0' };

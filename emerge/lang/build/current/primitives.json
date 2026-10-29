@@ -60,6 +60,9 @@
     "max_deliveries": 100000,
     "unrouted": "log"
   },
+  "ledger": {
+    "checkpoint_every": 256
+  },
   "transitions": {
     "discard_emits_on_refusal": true
   },
@@ -73,5 +76,186 @@
     "GAP_IS_FIRST_CLASS": "error",
     "EXECUTION_IS_TRACEABLE": "error",
     "unused_constraint": "warning"
+  },
+  "observe": {
+    "version": "1.0.0",
+    "field": {
+      "neutral": 0.5,
+      "damping": 0.012,
+      "start": {
+        "coherence": 0.6,
+        "friction": 0.2,
+        "resonance": 0.3,
+        "entropy": 0.2
+      },
+      "repeat_window": 8,
+      "repeat_step": 0.04,
+      "repeat_relief": 0.01,
+      "deviation_entropy": 0.08,
+      "deviation_friction": 0.04,
+      "deviation_full_z": 3,
+      "pressure_scaled": [
+        "gap"
+      ],
+      "regimes": {
+        "chaotic_entropy": 0.7,
+        "chaotic_coherence": 0.25,
+        "turbulent_friction": 0.65,
+        "turbulent_resonance": 0.7,
+        "resonant_coherence": 0.55,
+        "resonant_entropy": 0.3
+      },
+      "nudges": {
+        "genesis": {
+          "coherence": 0.1,
+          "friction": -0.08,
+          "entropy": -0.1
+        },
+        "register": {
+          "coherence": 0.02,
+          "entropy": -0.01
+        },
+        "compartment": {
+          "coherence": 0.02,
+          "entropy": -0.01
+        },
+        "wire": {
+          "coherence": 0.02,
+          "entropy": -0.01
+        },
+        "unwire": {
+          "friction": 0.01
+        },
+        "axiom": {
+          "coherence": 0.04,
+          "friction": -0.01,
+          "entropy": -0.03
+        },
+        "transition": {
+          "coherence": 0.03,
+          "friction": -0.01,
+          "entropy": -0.02
+        },
+        "promote": {
+          "coherence": 0.04,
+          "friction": -0.02,
+          "entropy": -0.03
+        },
+        "rejected": {
+          "coherence": -0.04,
+          "friction": 0.06,
+          "entropy": 0.05
+        },
+        "gap": {
+          "coherence": -0.08,
+          "friction": 0.07,
+          "entropy": 0.1
+        },
+        "unrouted": {
+          "coherence": -0.05,
+          "friction": 0.05,
+          "entropy": 0.06
+        },
+        "promotion_refused": {
+          "coherence": -0.06,
+          "friction": 0.06,
+          "entropy": 0.08
+        },
+        "aborted": {
+          "coherence": -0.12,
+          "friction": 0.1,
+          "entropy": 0.12
+        },
+        "write": {
+          "coherence": 0.005
+        },
+        "checkpoint": {
+          "coherence": 0.01,
+          "friction": -0.005,
+          "entropy": -0.01
+        }
+      }
+    },
+    "deviation": {
+      "window": 50,
+      "min_samples": 3,
+      "tick_floor": 1,
+      "z_flag": 3,
+      "rate_window": 16,
+      "flip_z": 1
+    },
+    "sigma": {
+      "window": 16,
+      "min_window": 3,
+      "slope_threshold": 3,
+      "accel_threshold": 0.5,
+      "oscillation_count": 3
+    },
+    "liminal": {
+      "velocity": {
+        "decay": 0.05,
+        "runaway": 0.8,
+        "gap_type": "structural",
+        "gap_pressure": 0.7,
+        "step": {
+          "gap": 0.15,
+          "rejected": 0.1,
+          "unrouted": 0.15,
+          "promotion_refused": 0.15,
+          "aborted": 0.5,
+          "transition": -0.05,
+          "promote": -0.05
+        }
+      },
+      "surface": {
+        "window": 64,
+        "flips": 3
+      },
+      "crystal": {
+        "min_count": 5,
+        "min_confidence": 0.75
+      }
+    },
+    "gaps": {
+      "dedup_hex": 32,
+      "regime_types": {
+        "degraded": "temporal",
+        "collapsing": "causal",
+        "oscillatory": "contradiction"
+      },
+      "regime_pressure": {
+        "degraded": 0.6,
+        "collapsing": 0.85,
+        "oscillatory": 0.7
+      },
+      "field_types": {
+        "turbulent": "contextual",
+        "chaotic": "contextual"
+      },
+      "field_pressure": {
+        "turbulent": 0.55,
+        "chaotic": 0.8
+      },
+      "field_persist": 5,
+      "crystal_types": {
+        "refusal": "logical",
+        "unrouted": "structural"
+      },
+      "crystal_pressure": {
+        "refusal": 0.5,
+        "unrouted": 0.4
+      },
+      "block_at": 0.9,
+      "tension": {
+        "weight_pressure": 0.5,
+        "weight_age": 0.25,
+        "weight_repeat": 0.25,
+        "age_cap": 1024,
+        "repeat_cap": 5,
+        "medium": 0.4,
+        "high": 0.7,
+        "critical": 0.9
+      }
+    }
   }
 }

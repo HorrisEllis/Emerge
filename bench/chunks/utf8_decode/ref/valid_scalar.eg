@@ -1,0 +1,7 @@
+fn valid_scalar(cp: num, n: num): bool {
+  if n == 2 and cp < 0x80 { return false }
+  if n == 3 and cp < 0x800 { return false }
+  if n == 4 and cp < 0x10000 { return false }
+  if cp >= 0xD800 and cp <= 0xDFFF { return false }
+  return cp <= 0x10FFFF
+}

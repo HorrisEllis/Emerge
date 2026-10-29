@@ -1,0 +1,7 @@
+compartment Tank {
+  id = "co-tank-001"
+  state { level: 50 }
+  constraint in_range hard { state.level >= 0 and state.level <= 100 }
+  on "fill" (ev) { state.level += ev.amount }
+  on "drain" (ev) { state.level -= ev.amount }
+}

@@ -14,6 +14,7 @@ const { EmergeError } = require('./errors');
 const { defineConstraint, evaluate } = require('../core/constraint');
 const { graphRecords } = require('./components');
 const build = require('./build-loader');
+const L = require('./ledger');
 
 const VERSION = require('../package.json').version;
 const SYSTEM_FILES = new Set(['<prelude>']);   // errors raised in here are reported at the caller's line
@@ -38,6 +39,7 @@ const mkMap = () => Object.create(null);
 function typeOf(v) {
   if (v === null || v === undefined) return 'null';
   if (typeof v === 'number') return 'num';
+  if (typeof v === 'bigint') return 'int';
   if (typeof v === 'string') return 'string';
   if (typeof v === 'boolean') return 'bool';
   if (Array.isArray(v)) return 'list';
@@ -90,6 +92,7 @@ function show(v, nested = false) {
   if (v === null || v === undefined) return 'null';
   if (typeof v === 'string') return nested ? JSON.stringify(v) : v;
   if (typeof v === 'number') return fmtNum(v);
+  if (typeof v === 'bigint') return String(v);
   if (typeof v === 'boolean') return String(v);
   if (Array.isArray(v)) return '[' + v.map(x => show(x, true)).join(', ') + ']';
   if (isFn(v)) return `<fn ${v.__eg.name}>`;
@@ -104,15 +107,8 @@ function show(v, nested = false) {
   return String(v);
 }
 
-/** canonical JSON — sorted keys — for hashing. Values must be data. */
-function canonical(v) {
-  if (v === null || v === undefined) return 'null';
-  if (typeof v === 'number') return Number.isFinite(v) ? JSON.stringify(Object.is(v, -0) ? 0 : v) : 'null';
-  if (typeof v === 'string' || typeof v === 'boolean') return JSON.stringify(v);
-  if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
-  const ks = Object.keys(v).sort();
-  return '{' + ks.map(k => JSON.stringify(k) + ':' + canonical(v[k])).join(',') + '}';
-}
+/** JSON.stringify replacer: a 64-bit int is written as a plain JSON number, exactly */
+const jsonBig = (k, v) => (typeof v === 'bigint' ? (JSON.rawJSON ? JSON.rawJSON(String(v)) : String(v)) : v);
 
 // mulberry32 — the same generator as emerge/core/seed.js, with its position exposed so whatif can restore it.
 function createRng(seed) {
@@ -195,7 +191,7 @@ function createRuntime(opts = {}) {
     }
     let ok;
     switch (name) {
-      case 'int': ok = typeof v === 'number' && Number.isInteger(v); break;
+      case 'int': ok = typeof v === 'bigint'; break;
       case 'float': case 'num': ok = typeof v === 'number'; break;
       case 'string': ok = typeof v === 'string'; break;
       case 'bool': ok = typeof v === 'boolean'; break;
@@ -224,7 +220,20 @@ function createRuntime(opts = {}) {
   const num2 = (op, a, b) => {
     if (typeof a !== 'number' || typeof b !== 'number') err(`${op} needs two nums, got ${typeOf(a)} and ${typeOf(b)}`);
   };
+  // ── 64-bit int (CIE-EG §3): a distinct type, never mixed with num. Overflow is an error; wrap_* is the explicit wrapping family.
+  const I_MIN = -(2n ** 63n), I_MAX = 2n ** 63n - 1n;
+  const isI = v => typeof v === 'bigint';
+  const fit = (v, op) => { if (v < I_MIN || v > I_MAX) err(`int overflow in ${op}: result does not fit in 64 bits (use wrap_add / wrap_sub / wrap_mul to wrap)`); return v; };
+  const mixed = (op, a, b) => err(`${op} does not mix int and num (got ${typeOf(a)} and ${typeOf(b)}): convert explicitly with int(x) or num(x)`);
+  const arith2 = (op, a, b) => {            // → 'i' both ints · 'n' both nums
+    if (isI(a) && isI(b)) return 'i';
+    if (typeof a === 'number' && typeof b === 'number') return 'n';
+    if ((isI(a) && typeof b === 'number') || (typeof a === 'number' && isI(b))) mixed(op, a, b);
+    err(`${op} needs two nums or two ints, got ${typeOf(a)} and ${typeOf(b)}`);
+  };
   rt.add = (a, b) => {
+    if (isI(a) && isI(b)) return fit(a + b, '+');
+    if ((isI(a) && typeof b === 'number') || (typeof a === 'number' && isI(b))) mixed('+', a, b);
     if (typeof a === 'number' && typeof b === 'number') return a + b;
     if (typeof a === 'string') return a + show(b);
     if (Array.isArray(a) && Array.isArray(b)) return a.concat(b);
@@ -232,17 +241,32 @@ function createRuntime(opts = {}) {
     if (isMap(a) && isMap(b)) { const m = mkMap(); Object.assign(m, a, b); return m; }
     err(`+ cannot combine ${typeOf(a)} and ${typeOf(b)}`);
   };
-  rt.sub = (a, b) => { num2('-', a, b); return a - b; };
+  rt.sub = (a, b) => { if (arith2('-', a, b) === 'i') return fit(a - b, '-'); return a - b; };
   rt.mul = (a, b) => {
     if (typeof a === 'string' && typeof b === 'number') {
       if (!Number.isInteger(b) || b < 0) err('string * n needs a non-negative int n');
       return a.repeat(b);
     }
-    num2('*', a, b); return a * b;
+    if (arith2('*', a, b) === 'i') return fit(a * b, '*'); return a * b;
   };
-  rt.div = (a, b) => { num2('/', a, b); if (b === 0) err('division by zero'); return a / b; };
-  rt.mod = (a, b) => { num2('%', a, b); if (b === 0) err('modulo by zero'); return ((a % b) + b) % b; };
-  rt.pow = (a, b) => { num2('**', a, b); return a ** b; };
+  rt.div = (a, b) => {
+    if (arith2('/', a, b) === 'i') err('int / int is not defined: use idiv(a, b) for integer division, or num(a) / num(b)');
+    if (b === 0) err('division by zero'); return a / b;
+  };
+  rt.mod = (a, b) => {
+    if (arith2('%', a, b) === 'i') { if (b === 0n) err('modulo by zero'); return ((a % b) + b) % b; }
+    if (b === 0) err('modulo by zero'); return ((a % b) + b) % b;
+  };
+  rt.pow = (a, b) => {
+    if (arith2('**', a, b) === 'i') {
+      if (b < 0n) err('int ** needs a non-negative exponent');
+      if (a === 0n || a === 1n) return b === 0n ? 1n : a;
+      if (a === -1n) return b % 2n === 0n ? 1n : -1n;
+      if (b > 63n) err('int overflow in **: result does not fit in 64 bits');
+      return fit(a ** b, '**');
+    }
+    return a ** b;
+  };
   // ── bit operations on 32-bit words (CIE-EG §3, for now): ints in [-2^31, 2^32); negatives are two's complement;
   //    every result is an unsigned word in [0, 2^32). Shift counts are 0..31.
   const word = (v, op) => {
@@ -250,23 +274,34 @@ function createRuntime(opts = {}) {
     return v >>> 0;
   };
   const count = (n, op) => { if (!Number.isInteger(n) || n < 0 || n > 31) err(`${op} needs a shift count in 0..31, got ${show(n, true)}`); return n; };
-  rt.band = (a, b) => (word(a, '&') & word(b, '&')) >>> 0;
-  rt.bor = (a, b) => (word(a, '|') | word(b, '|')) >>> 0;
-  rt.bxor = (a, b) => (word(a, '^') ^ word(b, '^')) >>> 0;
-  rt.bnot = a => (~word(a, '~')) >>> 0;
-  rt.shl = (a, n) => (word(a, '<<') << count(n, '<<')) >>> 0;
-  rt.shr = (a, n) => word(a, '>>') >>> count(n, '>>');
-  rt.neg = a => { if (typeof a !== 'number') err(`unary - needs a num, got ${typeOf(a)}`); return -a; };
+  //    On two ints the same operators work on the full 64-bit two's-complement pattern: & | ^ ~ << (wraps, as a bit operation does) and >> (arithmetic).
+  //    A shift count may be a num or an int, 0..63.
+  const wrap64 = v => BigInt.asIntN(64, v);
+  const needIs = (op, a, b) => { if (!isI(a) || !isI(b)) mixed(op, a, b); };
+  const count64 = (n, op) => {
+    const c = isI(n) ? n : (Number.isInteger(n) ? BigInt(n) : null);
+    if (c === null || c < 0n || c > 63n) err(`${op} on an int needs a shift count in 0..63, got ${show(n, true)}`);
+    return c;
+  };
+  rt.band = (a, b) => { if (isI(a) || isI(b)) { needIs('&', a, b); return a & b; } return (word(a, '&') & word(b, '&')) >>> 0; };
+  rt.bor = (a, b) => { if (isI(a) || isI(b)) { needIs('|', a, b); return a | b; } return (word(a, '|') | word(b, '|')) >>> 0; };
+  rt.bxor = (a, b) => { if (isI(a) || isI(b)) { needIs('^', a, b); return a ^ b; } return (word(a, '^') ^ word(b, '^')) >>> 0; };
+  rt.bnot = a => (isI(a) ? ~a : (~word(a, '~')) >>> 0);
+  rt.shl = (a, n) => (isI(a) ? wrap64(a << count64(n, '<<')) : (word(a, '<<') << count(n, '<<')) >>> 0);
+  rt.shr = (a, n) => (isI(a) ? a >> count64(n, '>>') : word(a, '>>') >>> count(n, '>>'));
+  rt.neg = a => { if (isI(a)) return fit(-a, 'unary -'); if (typeof a !== 'number') err(`unary - needs a num or an int, got ${typeOf(a)}`); return -a; };
   rt.eq = (a, b) => eq(a, b);
   rt.neq = (a, b) => !eq(a, b);
   rt.cmp = (op, a, b) => {
-    const okNum = typeof a === 'number' && typeof b === 'number';
+    if ((isI(a) && typeof b === 'number') || (typeof a === 'number' && isI(b))) mixed(op, a, b);
+    const okNum = (typeof a === 'number' && typeof b === 'number') || (isI(a) && isI(b));
     const okStr = typeof a === 'string' && typeof b === 'string';
     if (!okNum && !okStr) err(`${op} compares two nums or two strings, got ${typeOf(a)} and ${typeOf(b)}`);
     switch (op) { case '<': return a < b; case '<=': return a <= b; case '>': return a > b; case '>=': return a >= b; }
   };
   rt.range = (a, b) => {
-    if (!Number.isInteger(a) || !Number.isInteger(b)) err('.. needs two ints');
+    if (isI(a) && isI(b)) { const r = []; for (let i = a; i < b; i++) r.push(i); return r; }
+    if (!Number.isInteger(a) || !Number.isInteger(b)) err('.. needs two ints (both nums or both ints)');
     const r = [];
     for (let i = a; i < b; i++) r.push(i);
     return r;
@@ -370,6 +405,9 @@ function createRuntime(opts = {}) {
     byName: new Map(),
     globalHandlers: [],   // [{ signal, run }]
     ledger: [],
+    lastCkpt: 0,          // seq of the newest checkpoint entry (0: none yet)
+    gapEntries: 0,        // entries of kind gap so far (a checkpoint records the count)
+    inCkpt: false,
     gaps: [],
     rng: createRng(seed),
     spent: 0,
@@ -387,33 +425,55 @@ function createRuntime(opts = {}) {
 
   const toData = (v, what) => {
     if (v instanceof EBytes) return Buffer.from(v.b).toString('hex');
-    if (v === null || v === undefined || typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v === undefined ? null : v;
+    if (v === null || v === undefined || typeof v === 'number' || typeof v === 'bigint' || typeof v === 'string' || typeof v === 'boolean') return v === undefined ? null : v;
     if (Array.isArray(v)) return v.map(x => toData(x, what));
     if (isMap(v)) { const m = mkMap(); for (const k of Object.keys(v)) m[k] = toData(v[k], what); return m; }
     err(`${what} must be data — ${typeOf(v)} cannot be recorded`);
   };
 
+  // ── the ledger (CIE-EG §4): lang/ledger.js owns the format; this is the world's side of it ──
   function append(kind, body) {
-    const prev = W.ledger.length ? W.ledger[W.ledger.length - 1].hash : null;
+    if (typeof kind !== 'string' || !kind) err(`ledger: an entry kind must be a non-empty string, got ${typeOf(kind)}`);
+    const prev = W.ledger.length ? W.ledger[W.ledger.length - 1].hash : L.ZERO;
     const core = { seq: W.ledger.length + 1, kind, body: body === undefined ? null : body, prev };
-    const hash = crypto.createHash('sha256').update(canonical(core)).digest('hex');
+    let hash;
+    try { hash = L.hashEntry(core); }
+    catch (e) { if (e instanceof L.LedgerDataError) err(`ledger: ${e.message}`); throw e; }
     const entry = freeze(Object.assign(mkMap(), core, { hash }));
     W.ledger.push(entry);
+    if (kind === 'gap') W.gapEntries++;
+    if (kind === 'checkpoint') W.lastCkpt = entry.seq;
+    else if (!W.inCkpt && W.ledger.length - W.lastCkpt >= P.ledger.checkpoint_every) checkpoint();
     return entry;
   }
   rt.append = append;
-  append('seed', { seed, version: VERSION });
 
-  function verifyLedger() {
-    let prev = null;
-    for (const e of W.ledger) {
-      const core = { seq: e.seq, kind: e.kind, body: e.body, prev: e.prev };
-      if (e.prev !== prev) return false;
-      if (crypto.createHash('sha256').update(canonical(core)).digest('hex') !== e.hash) return false;
-      prev = e.hash;
-    }
-    return true;
+  /** §4.6: head, counts, one digest per component state, and a Merkle root over the entries since the last checkpoint */
+  function checkpoint() {
+    W.inCkpt = true;
+    try {
+      const last = W.ledger[W.ledger.length - 1];
+      const digests = mkMap();
+      for (const c of W.comps) digests[c.handle.id] = L.sha(L.ecfBytes(toData(c.state, 'state'), `state of ${c.handle.id}`)).toString('hex');
+      append('checkpoint', { head: last.hash, entries: last.seq, gaps: W.gapEntries, digests, root: L.merkleRoot(W.ledger.slice(W.lastCkpt).map(e => e.hash)) });
+    } finally { W.inCkpt = false; }
   }
+
+  // chain id: a UUID derived from what the chain starts from, so two runs from the same seed and build agree (layout: 8-4-4-4-12, version 8, variant 10)
+  const chainId = (() => {
+    const b = Buffer.from(L.sha(Buffer.from(`eg.chain.v1\0${seed} ${VERSION}`, 'utf8')).subarray(0, 16));
+    b[6] = (b[6] & 0x0f) | 0x80; b[8] = (b[8] & 0x3f) | 0x80;
+    const h = b.toString('hex');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  })();
+  W.inCkpt = true;     // the genesis entry never triggers a checkpoint (and reads no primitive: the seed-mode build has none to read)
+  try { append('genesis', { seed, version: VERSION, chain_id: chainId, text: { encoding: 'utf-8', normalization: 'nfc' } }); } finally { W.inCkpt = false; }
+
+  function verifyLedger(from) {
+    if (from === undefined || from === null) return L.verify(W.ledger).ok;
+    return L.verifyFrom(W.ledger, Number(needNumLoose(from, 'ledger_verify'))).ok;
+  }
+  const needNumLoose = (v, who) => { if (typeof v === 'bigint') return Number(v); if (typeof v !== 'number') err(`${who} needs a seq (num or int), got ${typeOf(v)}`); return v; };
 
   const uid = (prefix) => {
     const a = Math.floor(W.rng.next() * 0xffffffff).toString(16).padStart(8, '0');
@@ -505,7 +565,7 @@ function createRuntime(opts = {}) {
     W.byName.set(spec.name, c);
     if (c.component) {
       const r = c.component.record;
-      append('component', { name: spec.name, id: r.id, namespace: r.namespace, version: r.version, uuid: r.uuid, boundary: r.boundary, kinds: r.kinds, template: r.template, state: toData(c.state, 'state') });
+      append('register', { name: spec.name, id: r.id, namespace: r.namespace, version: r.version, uuid: r.uuid, boundary: r.boundary, kinds: r.kinds, template: r.template, state: toData(c.state, 'state') });
     } else append('compartment', { name: spec.name, id: spec.id, state: toData(c.state, 'state') });
     return handle;
   };
@@ -809,6 +869,7 @@ function createRuntime(opts = {}) {
   rt.record = (kind, payload) => {
     noLens('record');
     if (typeof kind !== 'string') err(`record needs a string kind, got ${typeOf(kind)}`);
+    if (L.RESERVED_KINDS.has(kind)) err(`record cannot write the kind "${kind}": the runtime owns it`);
     return append(kind, toData(payload === undefined ? null : payload, 'a record payload'));
   };
   rt.promote = (value, proof) => {
@@ -828,7 +889,7 @@ function createRuntime(opts = {}) {
   function snapshot() {
     return {
       states: W.comps.map(c => c.state), comps: W.comps.slice(), handlers: W.globalHandlers.length,
-      ledger: W.ledger.length, gaps: W.gaps.length, rng: W.rng.pos, spent: W.spent, unrouted: W.unrouted.length,
+      ledger: W.ledger.length, lastCkpt: W.lastCkpt, gaps: W.gaps.length, rng: W.rng.pos, spent: W.spent, unrouted: W.unrouted.length,
       axioms: W.axioms.length, ctx: W.ctx.length, wires: W.wires.slice(), templates: [...W.templates.keys()],
     };
   }
@@ -839,6 +900,8 @@ function createRuntime(opts = {}) {
     for (const k of [...W.templates.keys()]) if (!s.templates.includes(k)) W.templates.delete(k);
     W.globalHandlers.length = s.handlers;
     W.ledger.length = s.ledger;
+    W.lastCkpt = s.lastCkpt;
+    W.gapEntries = W.ledger.filter(e => e.kind === 'gap').length;
     W.gaps.length = s.gaps;
     W.rng.pos = s.rng;
     W.spent = s.spent;
@@ -924,20 +987,33 @@ function createRuntime(opts = {}) {
   def('str', 1, v => show(v));
   def('num', 1, v => {
     if (typeof v === 'number') return v;
+    if (isI(v)) { const n = Number(v); if (BigInt(n) !== v) err(`num(${v}): an int above 2^53 is not exactly representable as num`); return n; }
     const s = needStr(v, 'num').trim();
     const n = s === '' ? NaN : Number(s);
     if (Number.isNaN(n)) err(`num cannot read ${JSON.stringify(v)}`);
     return n;
   });
-  def('int', 1, v => Math.trunc(needNum(B.num(v), 'int')));
+  // int(x): the explicit way into the 64-bit int. A num is truncated toward zero; a string must be plain decimal digits.
+  def('int', 1, v => {
+    if (isI(v)) return v;
+    if (typeof v === 'string') {
+      const s = v.trim();
+      if (!/^[+-]?[0-9]+$/.test(s)) err(`int cannot read ${JSON.stringify(v)}`);
+      return fit(BigInt(s), 'int()');
+    }
+    if (typeof v !== 'number') err(`int needs a num, an int or a string, got ${typeOf(v)}`);
+    if (!Number.isFinite(v)) err(`int cannot convert ${show(v)}`);
+    return fit(BigInt(Math.trunc(v)), 'int()');
+  });
   def('floor', 1, v => Math.floor(needNum(v, 'floor')));
   def('ceil', 1, v => Math.ceil(needNum(v, 'ceil')));
   def('round', 1, v => Math.round(needNum(v, 'round')));
-  def('abs', 1, v => Math.abs(needNum(v, 'abs')));
+  def('abs', 1, v => (isI(v) ? fit(v < 0n ? -v : v, 'abs') : Math.abs(needNum(v, 'abs'))));
   def('sqrt', 1, v => { if (needNum(v, 'sqrt') < 0) err('sqrt of a negative num'); return Math.sqrt(v); });
   const minmax = (who, pick) => (...xs) => {
     const ys = xs.length === 1 && Array.isArray(xs[0]) ? xs[0] : xs;
     if (!ys.length) err(`${who} of nothing`);
+    if (ys.length && ys.every(isI)) return ys.reduce((m, y) => (pick === Math.min ? (y < m ? y : m) : (y > m ? y : m)));
     for (const y of ys) needNum(y, who);
     return pick(...ys);
   };
@@ -991,7 +1067,7 @@ function createRuntime(opts = {}) {
   def('trim', 1, s => needStr(s, 'trim').trim());
   def('replace', 3, (s, a, b) => needStr(s, 'replace').split(needStr(a, 'replace')).join(needStr(b, 'replace')));
   def('type_of', 1, v => typeOf(v));
-  def('json', 1, v => JSON.stringify(toData(v, 'json')));
+  def('json', 1, v => JSON.stringify(toData(v, 'json'), jsonBig));
   def('parse_json', 1, s => {
     let v;
     try { v = JSON.parse(needStr(s, 'parse_json')); } catch (e) { err(`parse_json: ${e.message}`); }
@@ -1002,7 +1078,55 @@ function createRuntime(opts = {}) {
   def('uid', [0, 1], (prefix = 'id') => uid(needStr(prefix, 'uid')));
   def('gaps', 0, () => W.gaps.slice());
   def('ledger', 0, () => W.ledger.slice());
-  def('ledger_verify', 0, () => verifyLedger());
+  def('ledger_verify', [0, 1], (from) => verifyLedger(from));   // ledger_verify() checks the whole chain; ledger_verify(seq) starts from the checkpoint at seq
+  // ledger_proof(seq): that entry belongs to the ledger — its Merkle path to the checkpoint that covers it
+  def('ledger_proof', 1, (n) => {
+    const seq = needNumLoose(n, 'ledger_proof');
+    const e = W.ledger[seq - 1];
+    if (!Number.isInteger(seq) || !e) err(`ledger_proof: no entry ${show(n, true)}`);
+    if (e.kind === 'checkpoint') err(`ledger_proof: entry ${seq} is a checkpoint — it anchors the entries before it`);
+    const cp = W.ledger.find(x => x.kind === 'checkpoint' && x.seq > seq);
+    if (!cp) err(`ledger_proof: entry ${seq} is not under a checkpoint yet`);
+    let p = cp.seq - 2; while (p >= 0 && W.ledger[p].kind !== 'checkpoint') p--;
+    const hashes = W.ledger.slice(p + 1, cp.seq - 1).map(x => x.hash);
+    const m = mkMap(); m.seq = seq; m.hash = e.hash; m.checkpoint = cp.seq; m.root = cp.body.root;
+    m.path = L.merkleProof(hashes, seq - 1 - (p + 1)).map(s => { const o = mkMap(); o.side = s.side; o.hash = s.hash; return o; });
+    return m;
+  });
+  def('ledger_check_proof', 1, (pr) => {
+    if (!isMap(pr) || !Array.isArray(pr.path)) err('ledger_check_proof needs a proof map from ledger_proof');
+    const e = W.ledger[pr.seq - 1], cp = W.ledger[pr.checkpoint - 1];
+    if (!e || !cp || cp.kind !== 'checkpoint' || e.hash !== pr.hash || cp.body.root !== pr.root) return false;
+    try { return L.merkleFold(pr.hash, pr.path) === pr.root; } catch (_) { return false; }
+  });
+  // observe() reads the ledger as a field (CIE-EG §13): the field's regime, the sigma regime, the liminal boundaries and the gap hunt, as data.
+  // It refuses a ledger that does not verify. It writes nothing. observe_gaps() hands the hunter's proposals to the gate: each becomes a gap
+  // entry carrying its dedup key and evidence, unless a gap with that key is already open. Returns the gaps it opened.
+  const observeReport = (what) => {
+    const r = require('../observe').observe(W.ledger, { primitives: P });
+    if (!r.ok) err(`${what}: the ledger does not verify (entry ${r.verify.seq}: ${r.verify.reason})`);
+    return r;
+  };
+  const dataOf = x => Array.isArray(x) ? x.map(dataOf) : (x !== null && typeof x === 'object') ? Object.keys(x).reduce((m, k) => { m[k] = dataOf(x[k]); return m; }, mkMap()) : x;
+  def('observe', 0, () => { const { series, ...r } = observeReport('observe'); return freeze(dataOf(r)); });
+  // ledger_why(n): the chain from entry n back to what explains it, and the world at n (CIE-EG §13.7) — the debugger, from inside the program
+  def('ledger_why', 1, (n) => {
+    const seq = needNumLoose(n, 'ledger_why');
+    const D = require('../observe/debug'), w = D.why(W.ledger, seq);
+    if (!w.ok) err(`ledger_why: ${w.reason}`);
+    return freeze(dataOf(w));
+  });
+  def('observe_gaps', 0, () => {
+    noLens('observe_gaps');
+    const opened = [];
+    for (const p of observeReport('observe_gaps').gaps.proposals) {
+      const g = openGap(p.message, p.pressure, p.type);
+      append('gap', { gap: g.id, message: p.message, pressure: p.pressure, type: p.type, line: rt.line, source: 'observe', dedup_key: p.dedup_key, evidence: p.evidence });
+      rt.emit(P.signals.gap_opened, toData(g, 'gap'));
+      opened.push(g);
+    }
+    return opened;
+  });
   def('spent', 0, () => W.spent);
   def('components', 0, () => {
     const comps = W.comps.filter(c => c.component).map(c => {
@@ -1072,20 +1196,36 @@ function createRuntime(opts = {}) {
       err('invalid UTF-8');
     }
   });
-  const le = (who, width, signed) => (n) => {
-    const max = signed ? 2 ** (width * 8 - 1) - 1 : 2 ** (width * 8) - 1;
-    const min = signed ? -(2 ** (width * 8 - 1)) : 0;
-    if (!Number.isInteger(n) || n < min || n > Math.min(max, Number.MAX_SAFE_INTEGER)) err(`${who} needs an int in ${min}..${width === 8 ? '2^53' : max}, got ${show(n, true)}`);
+  // u8 u16le u32le u64le i32le i64le · u16be u32be u64be — fixed-width integers to bytes. A num or an int in range; anything else is an error.
+  const fixed = (who, width, signed, big) => (n) => {
+    const bits = BigInt(width * 8);
+    const min = signed ? -(2n ** (bits - 1n)) : 0n;
+    const max = signed ? 2n ** (bits - 1n) - 1n : 2n ** bits - 1n;
+    let v;
+    if (isI(n)) v = n;
+    else if (Number.isSafeInteger(n)) v = BigInt(n);
+    else err(`${who} needs an int in ${min}..${max}, got ${show(n, true)}`);
+    if (v < min || v > max) err(`${who} needs an int in ${min}..${max}, got ${show(n, true)}`);
+    let u = BigInt.asUintN(width * 8, v);
     const out = Buffer.alloc(width);
-    if (width === 8) out.writeBigUInt64LE(BigInt(n));
-    else if (signed) out.writeIntLE(n, 0, width); else out.writeUIntLE(n, 0, width);
+    for (let k = 0; k < width; k++) { out[big ? width - 1 - k : k] = Number(u & 0xFFn); u >>= 8n; }
     return new EBytes(out);
   };
-  def('u8', 1, le('u8', 1, false));
-  def('u16le', 1, le('u16le', 2, false));
-  def('u32le', 1, le('u32le', 4, false));
-  def('u64le', 1, le('u64le', 8, false));
-  def('i32le', 1, le('i32le', 4, true));
+  def('u8', 1, fixed('u8', 1, false, false));
+  def('u16le', 1, fixed('u16le', 2, false, false));
+  def('u32le', 1, fixed('u32le', 4, false, false));
+  def('u64le', 1, fixed('u64le', 8, false, false));
+  def('i32le', 1, fixed('i32le', 4, true, false));
+  def('i64le', 1, fixed('i64le', 8, true, false));
+  def('u16be', 1, fixed('u16be', 2, false, true));
+  def('u32be', 1, fixed('u32be', 4, false, true));
+  def('u64be', 1, fixed('u64be', 8, false, true));
+  // read_u64be(bytes, offset) → int: the inverse of u64be, for a value that fits in 63 bits (a larger one is an error, never a wrap)
+  def('read_u64be', 2, (b, off) => {
+    const u = needBytes(b, 'read_u64be'); needNum(off, 'read_u64be');
+    if (!Number.isInteger(off) || off < 0 || off + 8 > u.length) err(`read_u64be: offset ${show(off, true)} needs 8 bytes inside ${u.length}`);
+    return fit(Buffer.from(u.subarray(off, off + 8)).readBigUInt64BE(), 'read_u64be');
+  });
   def('sha256', 1, v => new EBytes(crypto.createHash('sha256').update(typeof v === 'string' ? Buffer.from(v, 'utf8') : needBytes(v, 'sha256')).digest()));
   def('read_bytes', 1, p => {
     try { return new EBytes(fs.readFileSync(needStr(p, 'read_bytes'))); } catch (e) { err(`read_bytes: ${e.code || e.message} ${p}`); }
@@ -1103,10 +1243,23 @@ function createRuntime(opts = {}) {
     try { fs.chmodSync(needStr(p, 'chmod_exec'), 0o755); } catch (e) { err(`chmod_exec: ${e.code || e.message} ${p}`); }
     return null;
   });
-  def('rotl', 2, (x, n) => { const w = word(x, 'rotl'); const c = count(n, 'rotl'); return ((w << c) | (w >>> ((32 - c) % 32))) >>> 0; });
-  def('rotr', 2, (x, n) => { const w = word(x, 'rotr'); const c = count(n, 'rotr'); return ((w >>> c) | (w << ((32 - c) % 32))) >>> 0; });
+  const rot64 = (x, n, left, who) => {
+    const c = count64(n, who); const u = BigInt.asUintN(64, x); const k = left ? c : (64n - c) % 64n;
+    return wrap64((u << k) | (u >> ((64n - k) % 64n)));
+  };
+  def('rotl', 2, (x, n) => { if (isI(x)) return rot64(x, n, true, 'rotl'); const w = word(x, 'rotl'); const c = count(n, 'rotl'); return ((w << c) | (w >>> ((32 - c) % 32))) >>> 0; });
+  def('rotr', 2, (x, n) => { if (isI(x)) return rot64(x, n, false, 'rotr'); const w = word(x, 'rotr'); const c = count(n, 'rotr'); return ((w >>> c) | (w << ((32 - c) % 32))) >>> 0; });
   def('wrap32', 1, x => { if (!Number.isInteger(x) || !Number.isSafeInteger(x)) err(`wrap32 needs a safe int, got ${show(x, true)}`); return ((x % 4294967296) + 4294967296) % 4294967296; });
+  def('shr_u', 2, (x, n) => { if (!isI(x)) err(`shr_u needs an int, got ${typeOf(x)}`); return wrap64(BigInt.asUintN(64, x) >> count64(n, 'shr_u')); });
+  const wrapOp = (who, f) => def(who, 2, (a, b) => { if (!isI(a) || !isI(b)) err(`${who} needs two ints, got ${typeOf(a)} and ${typeOf(b)}`); return wrap64(f(a, b)); });
+  wrapOp('wrap_add', (a, b) => a + b); wrapOp('wrap_sub', (a, b) => a - b); wrapOp('wrap_mul', (a, b) => a * b);
   def('idiv', 2, (a, b) => {
+    if (isI(a) || isI(b)) {
+      if (!isI(a) || !isI(b)) mixed('idiv', a, b);
+      if (b === 0n) err('division by zero');
+      let q = a / b; if (a % b !== 0n && (a < 0n) !== (b < 0n)) q -= 1n;
+      return fit(q, 'idiv');
+    }
     if (!Number.isInteger(a) || !Number.isInteger(b)) err(`idiv needs two ints, got ${typeOf(a)} ${show(a, true)} and ${typeOf(b)} ${show(b, true)}`);
     if (b === 0) err('division by zero');
     return Math.floor(a / b);
@@ -1145,6 +1298,7 @@ function createRuntime(opts = {}) {
       return 1;
     }
     summary();
+    if (W.ledger[W.ledger.length - 1].kind !== 'checkpoint') checkpoint();   // §4.6: a checkpoint at clean shutdown
     return 0;
   };
 
@@ -1202,7 +1356,7 @@ function parseRunArgs(argv) {
 }
 
 function finishRun(rt, opts, code) {
-  if (opts.ledger) fs.writeFileSync(opts.ledger, JSON.stringify(rt.world.ledger, null, 2) + '\n');
+  if (opts.ledger) fs.writeFileSync(opts.ledger, JSON.stringify(rt.world.ledger, jsonBig, 2) + '\n');
   return code;
 }
 

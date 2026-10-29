@@ -19,24 +19,23 @@ spec:
       The spec compiler reads .spec files and emits code deterministically.
       Token cost for T0+T1: zero.
       Token cost for T2+T3: one chunk per node, scoped to that node only.
-      Cortex is queried before any emission — nothing is re-built if it already exists.
+      The build host is queried before any emission — nothing is re-built if it already exists.
+      §2026-10-28 — James: "don't couple to nexus … everything from the ground up." The host was Cortex; it is now an
+      interface (compiler/host.js) with a local default. Cortex is one host, in Nexus's own repo, passed in.
     tagline: "Compress intent. Decompress deterministically. Pay tokens once."
     target_runtime: [node]
     language_stack: [javascript]
-    paradigm: [SISO, functional, deterministic, cortex-first]
+    paradigm: [SISO, functional, deterministic, host-first]
     deps:
       - name: js-yaml
         version: ">=4.1.0"
         required: true
         purpose: .spec file parse
-      - name: cortex
-        version: ">=2.0.0"
-        required: false
-        purpose: source of truth — query before generate
+      # cortex is no longer a dependency of emerge (2026-10-28); a project may pass it in as a host from its own repo
 
     constraints:
       - id: CC-001
-        description: Query Cortex before emitting anything. If Cortex has it, skip.
+        description: Query the build host before emitting anything. If the host has it, skip. (Was Cortex; amended 2026-10-28.)
         type: hard
         enforced_by: [GATE-COMPILER-001]
       - id: CC-002
@@ -52,7 +51,7 @@ spec:
         type: hard
         enforced_by: [GATE-COMPILER-004]
       - id: CC-005
-        description: Every emitted file is registered with Cortex via versionium after write.
+        description: Every emitted file is recorded by the build host after write (local host - a build record with each file's SHA-256; was Cortex versionium; amended 2026-10-28).
         type: hard
         enforced_by: [GATE-COMPILER-005]
 
@@ -61,6 +60,7 @@ spec:
     - id:    MOD-CORTEX-QUERY
       name:  cortex-query
       uuid:  spec-compiler-cortex-query-v1-0000-0001
+      moved: "out of Emerge (2026-10-28) into Nexus's adapter, in Nexus's repo — the Nexus host's preflight; Emerge no longer contains or requires it"
       description: >
         Implements CORTEX_QUERY_SEAM. Queries Cortex at :3748 before any generation.
         Returns: project existence, existing files, open gaps, seam records, memory.
@@ -113,7 +113,7 @@ spec:
         - "GATE-T0-009: cortexResult.existingFiles → skip any file already present"
       behavioral_contracts:
         - Output is deterministic. Same spec always produces same tree.
-        - Existing files (from Cortex) are never overwritten. Skip and log.
+        - Existing files (from the host's preflight) are never overwritten. Skip and log.
         - Empty impl files contain only header comment, specDepth, TODO placeholder.
         - No implementation logic emitted. T0 is structure only.
       error_paths:
@@ -129,7 +129,7 @@ spec:
         Input: ParsedSpec + KnowledgeGraph (minimal) + PreflightResult.
         Output: typed interfaces, gate stubs with SISO wiring, test describe blocks.
         Gate: generationReadiness > 0.3 per module.
-        Injects open gaps from Cortex as TODO comments in stubs.
+        Injects open gaps from the host's preflight as TODO comments in stubs.
       exports:
         - "emitT1(parsedSpec: ParsedSpec, graph: KnowledgeGraph, outputDir: string, cortexResult?: PreflightResult) → T1Result"
         - "emitInterface(mod: ParsedModule, spec: ParsedSpec) → string"
@@ -146,7 +146,7 @@ spec:
         - Every gate in gate_pipeline produces a commented stream.on() stub.
         - Every behavioral contract produces a commented it() block in test scaffold.
         - Every error path produces a commented it('should handle X') in test scaffold.
-        - Open Cortex gaps for this module are injected as GAP comments at top of impl file.
+        - Open host gaps for this module are injected as GAP comments at top of impl file.
       error_paths:
         - genReadiness below 0.3 → skip with log, not error
         - export signature unparseable → emit stub with raw string as comment
@@ -218,6 +218,152 @@ spec:
         - "a dep naming nothing declared → BLACK node (specDepth 0), never a throw"
         - "cyclic depends_on → build order still total; cycle reported by the invariants engine"
 
+    # §2026-10-28 — building cie-eg.spec (and any project) from Emerge alone. Specced here before shipping, per James 2026-10-20: "everything needs
+    # to be speccced before built, so it can be rebuilt if lost." Also amends MOD-KG-BUILDER: schemas are scored before the
+    # nodes that reference them (a module with schema_refs read depth 0.0 and was reported BLOCKED as a false cycle), and a
+    # schema with complete: true whose fields all have a type scores FULL (the gap-field engine's "confirm schema is
+    # intentionally small").
+    - id:    MOD-TARGET
+      name:  target
+      uuid:  spec-compiler-target-v1-0000-2026-1028-jamesbrooks-001
+      description: >
+        compiler/target.js. Reads two things from a spec: its target language (meta.language_stack or meta.target_runtime
+        naming emerge, eg or emerge.exe → Emerge; otherwise TypeScript, as before) and each module's build plan
+        (build: {state: built | partial | not_built, blocked_by, file, test, existing, next}).
+      exports:
+        - "isEmergeTarget(meta) → bool"
+        - "buildDecision(mod) → null | { tier: DONE | DEFERRED, reason, blocked_by }"
+        - "modulePaths(mod, meta) → { lang, impl, test }   (relative to outputDir)"
+        - "EMERGE_CARD → string   (the Emerge syntax a T2 prompt carries)"
+      gate_pipeline:
+        - "GATE-TGT-001: meta → language (emerge | typescript)"
+        - "GATE-TGT-002: module.build → DONE when built, DEFERRED when blocked_by is not empty, else null (readiness decides)"
+      behavioral_contracts:
+        - "A spec with neither field compiles exactly as before."
+        - "tier-contract.decideTier checks buildDecision after BLACK and before readiness; DONE goes to the skip bucket, DEFERRED to the defer bucket, both with a reason."
+      error_paths:
+        - "unknown build.state → treated as not_built"
+
+    - id:    MOD-EMIT-EMERGE
+      name:  emit-emerge
+      uuid:  spec-compiler-emit-emerge-v1-0000-2026-1028-jamesbrooks-001
+      description: >
+        compiler/emit-emerge.js. T0 and T1 for Emerge targets: one .eg and one .test.eg per module at the build plan's paths.
+        T1 stubs raise "not implemented"; gates, contracts and error paths are comments; the test file holds one commented
+        test per contract and error path. No package.json, tsconfig.json or .ts.
+      deps:
+        - { name: target }
+      exports:
+        - "emitT0Emerge(parsedSpec, outputDir) → T0Result"
+        - "emitT1Emerge(parsedSpec, outputDir, { readinessOf, minReadiness }) → T1Result"
+      gate_pipeline:
+        - "GATE-EE-001: module → buildDecision → DONE or DEFERRED → skip with reason"
+        - "GATE-EE-002: export → a plain fn signature? else kept as a comment"
+        - "GATE-EE-003: name already a builtin (probe: let x = name compiles) → comment, not redefined"
+        - "GATE-EE-004: stub → Emerge checker → error → comment with the checker's message"
+        - "GATE-EE-005: write only if the file is absent or starts with GENERATED_MARK"
+      behavioral_contracts:
+        - "Same spec → same bytes."
+        - "Every emitted file passes the Emerge checker."
+        - "A file without GENERATED_MARK (written by a person or by T2) is never overwritten."
+      error_paths:
+        - "Emerge checker unavailable → stubs emitted unchecked, and the file header says so"
+        - "fs failure → failures[], never thrown"
+
+    - id:    MOD-T2-GATE
+      name:  t2-gate
+      uuid:  nexus-emerge-t2-gate-v1-0000-2026-0625-jamesbrooks-001
+      description: >
+        compiler/t2-gate.js (amended 2026-10-28, 2.0.0). T2 calls a model through compiler/model.js (was Guardian at :7820,
+        which is now a model backend in Nexus's repo). Reads parsedSpec from the compile result (compile() returns it),
+        takes spec entries given as strings, and for Emerge targets asks for Emerge, uses the build plan's paths, checks
+        every answer with the Emerge checker before writing, and never overwrites a file without GENERATED_MARK.
+      deps:
+        - { name: target }
+        - { name: emit-emerge }
+        - { name: model }
+      exports:
+        - "buildNodePrompt(node, parsedSpec, stubSrc, outputDir) → string"
+        - "dispatch(compileResult, opts) → { ok, completed, failed, results }"
+      gate_pipeline:
+        - "GATE-T2-001: run bucket T2 nodes → prompt (language from the spec, EMERGE_CARD for Emerge)"
+        - "GATE-T2-002: prompt → model.generate (local Ollama by default; any backend passed in)"
+        - "GATE-T2-003: Emerge answer → Emerge checker → fails → <file>.t2-rejected.eg, counted failed"
+        - "GATE-T2-004: target file without GENERATED_MARK (Emerge) → <file>.t2-proposal.eg beside it"
+      behavioral_contracts:
+        - "TypeScript specs: prompt language, paths and overwrite behaviour unchanged."
+        - "A rejected or proposed answer never replaces the file it was meant for."
+      error_paths:
+        - "model call fails → result failed with the error, next node continues"
+
+    - id:    MOD-HOST
+      name:  host
+      uuid:  spec-compiler-host-v1-0000-2026-1028-jamesbrooks-001
+      description: >
+        compiler/host.js. Where a build reports to. The pipeline, the legacy compiler and verify.js call host.preflight,
+        host.writeback and host.sync instead of Cortex and Idearium. Emerge ships the local host: no network, a build record
+        at <outputDir>/.emerge/build/<spec name>.json with the spec hash, every emitted file and its SHA-256, the plan, the
+        gaps and what T2 did. Any other host is a module a project passes in from its own repo.
+      exports:
+        - "local → host"
+        - "loadHost(h) → host   (h: object, module path, 'local', or EMERGE_HOST)"
+      gate_pipeline:
+        - "GATE-HOST-001: options.host → loadHost → missing methods fall back to the local host's"
+        - "GATE-HOST-002: writeback → record with no wall-clock field (CIE-EG 4.9) → same inputs, same bytes"
+      behavioral_contracts:
+        - "Nothing in emerge/ requires a host module from outside it; a host is always passed in."
+        - "The local host never touches the network."
+      error_paths:
+        - "host without a name → refused with a message"
+        - "record cannot be written → report ok false with the error, never thrown"
+
+    - id:    MOD-MODEL
+      name:  model
+      uuid:  spec-compiler-model-v1-0000-2026-1028-jamesbrooks-001
+      description: >
+        compiler/model.js. The model T2 asks: generate(prompt, meta) → { ok, text, error }. Emerge ships two backends that talk
+        straight to a local server: ollama (/api/chat) and openai-compatible (/v1/chat/completions: llama.cpp, LM Studio,
+        vLLM). Any other backend is a module a project passes in from its own repo.
+      exports:
+        - "createModel({ api, url, model, temperature, ctx }) → model"
+        - "loadModel(m) → model   (m: object with generate, module path, or settings)"
+      gate_pipeline:
+        - "GATE-MDL-001: settings or env (EMERGE_MODEL_API, EMERGE_MODEL_URL, EMERGE_MODEL) → backend"
+        - "GATE-MDL-002: prompt → one user message → text, or ok false with the server's error"
+      behavioral_contracts:
+        - "A failed call is a result with its error, never a throw."
+      error_paths:
+        - "server unreachable or timed out → { ok: false, error }"
+        - "unknown api → refused with a message"
+
+    - id:    MOD-BUILD-SPEC
+      name:  build-spec
+      uuid:  emerge-build-spec-v1-0000-2026-1028-jamesbrooks-001
+      description: >
+        emerge/build-spec.js. Builds any project from its .spec with nothing but Emerge: plan (--dry-run), scaffolds and a
+        build record, or --build with T2 through a model. The build root is --out, else the spec's meta.build_root, else the
+        current folder. Lists open decisions with the modules waiting on them. buildSpec() is exported so a project can pass
+        its own host and model from its own repo.
+      deps:
+        - { name: host }
+        - { name: model }
+        - { name: t2-gate }
+      exports:
+        - "node build-spec.js <file.spec> [--dry-run] [--build] [--out dir] [--host module] [--model name] [--api ollama|openai] [--url server] [--model-module module]"
+        - "buildSpec({ spec, out, dryRun, build, host, model, log }) → { ok, compileResult, decisions, t2, root }"
+        - "openDecisions(spec) → [{ id, question, waiting }]"
+      gate_pipeline:
+        - "GATE-BS-001: spec → meta.build_root → build root (a temp folder in a dry run)"
+        - "GATE-BS-002: compile(spec, root, { host, tier 1 }) → plan, scaffolds, host record"
+        - "GATE-BS-003: decisions from spec.decisions or any section's decisions, plus every build.blocked_by id"
+        - "GATE-BS-004: --build → t2-gate.dispatch with the model → host.writeback again with the T2 results"
+      behavioral_contracts:
+        - "A dry run writes nothing outside its temp folder."
+        - "Without --build no model is called; with it, only the model server is contacted."
+      error_paths:
+        - "spec not found or compile fails → exit 1 with the error"
+
+
   events:
     compiler:
       - "compiler.t0.emitted { outputDir, emittedCount, skippedCount, moduleCount }"
@@ -233,10 +379,10 @@ spec:
   enforcement:
     gates:
       - id: GATE-COMPILER-001
-        name: cortex-first
-        description: Compiler always calls cortex-query.preflight() before emitting. No exceptions.
+        name: host-first
+        description: Compiler always calls host.preflight() before emitting. No exceptions. (Was cortex-query.preflight(); amended 2026-10-28.)
         severity: fatal
-        check: preflight() called and result checked before any fs.writeFileSync()
+        check: host.preflight() called and result checked before any fs.writeFileSync()
         on_failure: build failure
 
       - id: GATE-COMPILER-002
@@ -261,8 +407,8 @@ spec:
         on_failure: build failure
 
       - id: GATE-COMPILER-005
-        name: versionium-register
-        description: Every emitted file is registered to Cortex versionium after write.
+        name: host-record
+        description: Every emitted file is recorded by the build host after write. (Was Cortex versionium; amended 2026-10-28.)
         severity: warning
-        check: POST /api/versionium/commit called after successful T0/T1 run
-        on_failure: log warning — file exists on disk but Cortex does not know
+        check: host.writeback() called after a successful T0/T1 run (local host - <outputDir>/.emerge/build/<spec>.json)
+        on_failure: log warning — file exists on disk but the host has no record of it

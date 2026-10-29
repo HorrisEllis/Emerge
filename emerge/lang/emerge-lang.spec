@@ -83,7 +83,7 @@ spec:
                   before a leading "|>".
 
   semantics:
-    values: "num (IEEE double; int = integral num) · string · bool · null · list · map (string keys, insertion order) · fn · compartment handle · module"
+    values: "num (IEEE double) · int (64-bit signed, BigInt-backed, literal 42i / 0xFFi, never mixed with num) · string · bool · null · list · map (string keys, insertion order) · fn · compartment handle · module"
     truth: "if / while / and / or / not / expect / constraint / axiom demand a bool — anything else is a runtime error, never coerced"
     equality: "== is deep structural equality on every value"
     plus: "num+num · string+any (any rendered) · list+list · map+map (right wins); anything else is a runtime error"
@@ -113,7 +113,7 @@ spec:
     - "emit out h { … } is buffered like emit: it leaves only if the transition commits"
     - "a shape is a seam contract: every field present with its type, nothing extra; checked at emit out, at send and on delivery to an in hook"
     - "wire A.out -> B.in · wire \"signal\" -> B.in · wire A.out -> \"signal\"; signal → signal is an on handler, not a wire"
-    - "compile time: wire ends exist and run out → in; no duplicate wires; out → in shapes must be compatible (int flows into num, any accepts all, a nullable out cannot feed a non-null in, no missing or extra fields)"
+    - "compile time: wire ends exist and run out → in; no duplicate wires; out → in shapes must be compatible (num flows into num, int only into int, any accepts all, a nullable out cannot feed a non-null in, no missing or extra fields)"
     - "warnings: an out hook with no wire, an in hook nothing wires or sends to"
     - "run time: an out with no wire is recorded unrouted as Comp.hook; wires are recorded in the ledger; whatif restores them"
     - "components() returns { components, hooks, wires } — the same records eg components exports statically, validated against the required fields read from emerge/schemas/schema.component, schema.hook, schema.wire"

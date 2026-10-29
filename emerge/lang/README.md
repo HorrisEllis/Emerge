@@ -48,15 +48,69 @@ ledger entry kind and axiom, and how the vocabulary of `emerge.spec` lines up wi
 from the source, so it is never out of date. **Examples:** `examples/`, one per feature, from `hello.eg` to
 `primitives.eg`.
 
-## Native output (CIE-EG §10, in progress)
+## Native output (CIE-EG §10): the compiler compiles itself
 
-`lang/native/` holds the start of the native back end, written in Emerge: `x64.eg` (an x86-64 encoder and two-pass
-assembler), `pe.eg` (a Windows PE32+ writer) and `elf.eg` (a Linux ELF64 writer). `milestone.eg` is §10.3: an Emerge
-program that writes `hello.exe` and `hello` byte by byte. Both ran and printed `hello from emerge` (the `.exe` under
-Wine 9). A compiler from Emerge programs to native code (`eg native`) is not built yet.
+`lang/native/` is Emerge's native compiler, written in Emerge, and it builds itself. Node ran it once (stage 0); the
+binary it made, `native/bin/emerge`, compiles the compiler's own source to the same bytes (stage 1, stage 2).
 
-Bytes and bit operations (§3): `bytes(…)`, `0xFF`/`0b1010`, `& | ^ ~ << >>` on 32-bit words, `rotl rotr idiv`,
-`u8 u16le u32le u64le i32le`, `hex from_hex utf8 byte_len sha256 read_bytes write_bytes`.
+```
+native/bin/emerge prog.eg [-o out]       # Linux x86-64: no Node, no libc — the program talks to the kernel directly
+eg native prog.eg [-o out]               # the same, after the JS checker's diagnostics; --stage0 runs the compiler in the interpreter
+native/bin/emerge native/emerge.eg -o native/bin/emerge     # rebuild the compiler with itself
+```
+
+| File | What it is |
+| --- | --- |
+| `emerge.eg` | the driver: reads the program and every module it `use`s, parses, compiles, writes the executable |
+| `front.eg` | lexer and parser: the same tree as `lexer.js` / `parser.js` |
+| `codegen.eg` | the code generator: tagged values and calls into the runtime; raw mode for the runtime itself |
+| `rt.eg` | the runtime, in raw Emerge: memory, strings, lists, maps, bytes, 64-bit ints, printing, files, args, errors |
+| `rt_text.eg` | `rt.eg` as one string, so the compiler carries its runtime (regenerate: `eg run native/embed.eg native/rt.eg native/rt_text.eg`) |
+| `x64.eg`, `elf.eg`, `pe.eg` | the x86-64 encoder and assembler, the Linux ELF writer, the Windows PE writer |
+| `json.eg` | a JSON reader in Emerge |
+
+**The native subset:** `num` (integral, up to 2^53), `int` (64-bit, overflow traps), `bool`, `null`, strings (UTF-8,
+code-point indexing, interpolation), lists and maps (shared by reference, as in the interpreter), `bytes`, `let`/`var`,
+`= += -= *= /=` on names, indexes and fields, `if`/`else`, `while`, `for` over ranges, lists, maps, strings and bytes (one
+or two variables), `break`/`skip`/`return`, functions with recursion, modules (`use`, with the interpreter's export
+snapshot), and the builtins `print len str repr type_of int num has get keys values slice push byte_len bytes utf8 range
+join raise read_file read_bytes write_file write_bytes chmod_exec args idiv shr_u min max floor`. Errors go to stderr with
+exit status 1, as in the interpreter. Anything else is refused by name, never skipped: lambdas, `try`, fractional nums,
+`**`, prelude functions (`map`, `sum`, …), functions as values, compartments, components and the ledger.
+
+`lang/test/native.test.js` runs 72 programs both ways and requires the same stdout and exit status;
+`lang/test/selfhost.test.js` checks the embedded runtime, front-end parity with the JS parser, and the three stages.
+
+Bytes and bit operations (§3): `bytes(…)`, `0xFF`/`0b1010`, `& | ^ ~ << >>` on 32-bit words (nums), `rotl rotr idiv`,
+`u8 u16le u32le u64le i32le i64le u16be u32be u64be read_u64be`, `hex from_hex utf8 byte_len sha256 read_bytes write_bytes`.
+
+### `int`: a real 64-bit integer (§3)
+
+`int` is its own type next to `num` (an IEEE double). It is a signed 64-bit value; a literal is written `42i`, `0xFFi` or `0b101i`.
+
+```eg
+let a = 9223372036854775806i
+print(a + 1i)               // 9223372036854775807
+print(a + 2i)               // error: int overflow in + (never a wrap)
+print(wrap_add(a, 2i))      // -9223372036854775808   wrapping is explicit: wrap_add wrap_sub wrap_mul
+print(1i + 1)               // error: no implicit int/num mixing — write int(x) or num(x)
+print(7i / 2i)              // error: use idiv(a, b)   (idiv floors; % is floored too)
+```
+
+- `int(x)` takes a num (truncated toward zero), an int, or a string of plain decimal digits. `num(i)` is refused when the int is above 2^53.
+- On two ints, `& | ^ ~ << >>` use the full 64-bit pattern (`<<` wraps as a bit operation does; `>>` is arithmetic; `shr_u` is logical). A shift count may be a num or an int, 0..63. `rotl`/`rotr` rotate 64 bits on an int and 32 bits on a num.
+- `==` is by value; an int never equals a num. `..`, `min`, `max`, `abs`, `json` and the ledger (canonical decimal digits) all take ints. The fixed-width writers (`u64be`, `i64le`, …) take a num or an int and refuse anything out of range.
+- The `int` annotation is exact: `let x: int = 1` is an error (`1i` is the int), and an `int` hook field does not flow into a `num` field.
+- A literal above 2^63-1 is a lexer error. The minimum is written `-9223372036854775807i - 1i`.
+
+## The ledger (CIE-EG §4)
+
+Every program writes an append-only, hash-chained ledger. `lang/ledger.js` owns the format; the runtime only appends.
+
+- **Entry:** `{ seq, kind, body, prev, hash }`. `hash` is SHA-256 over `"eg.ledger.entry.v1" 0x00 ‖ prev (32 bytes) ‖ seq (u64 BE) ‖ len(kind) (u32 BE) ‖ kind ‖ len(body) (u32 BE) ‖ ecf(body)`. Hashes are 64 hex digits; the genesis entry's `prev` is 32 zero bytes.
+- **ECF (canonical form):** UTF-8, no whitespace, map keys in raw byte order, ints in plain decimal, `-0` as `0`. Text must be NFC, so non-NFC text, lone surrogates, NaN, infinity and non-data are refused, never normalized. An int and a num with the same value write the same bytes.
+- **Kinds:** the first entry is `genesis` (seed, version, a chain id derived from them, text settings). A component registers as `register`. `checkpoint` is written every `ledger.checkpoint_every` entries (`core/primitives.eg`, default 256) and at clean shutdown: head, entry count, gap count, a SHA-256 digest of each component's state, and a Merkle root over the entries since the last checkpoint. `record` may not write the kinds the runtime owns (`genesis checkpoint transition rejected gap register deliver boot …`).
+- **Builtins:** `ledger()`, `ledger_verify()` (every hash, link, seq, and each checkpoint's head, counts and root), `ledger_verify(seq)` (from the checkpoint at `seq`), `ledger_proof(seq)` (the Merkle path from an entry to its checkpoint) and `ledger_check_proof(p)`.
 
 ## Changing the language itself (0 tokens)
 
@@ -64,7 +118,7 @@ The core rules and the standard library are Emerge source in `lang/core/`. The t
 
 | file | what it holds | change it to… |
 |---|---|---|
-| `core/primitives.eg` | constraint types, gap types and pressures, runtime signal names, strict or truthy conditions, unrouted = log or error, whether refused transitions discard their emits, boundary limit, hook type, and each axiom's severity (error, warning or off) | change what the language *means* |
+| `core/primitives.eg` | constraint types, gap types and pressures, runtime signal names, the checkpoint interval, strict or truthy conditions, unrouted = log or error, whether refused transitions discard their emits, boundary limit, hook type, and each axiom's severity (error, warning or off) | change what the language *means* |
 | `core/prelude.eg` | the standard library in Emerge: map, filter, reduce, find, any, all, count, push, reverse, sum, index_of, without, flatten, zip, unique, group_by, take, drop | add or replace builtins. A prelude fn with a native's name replaces the native |
 | `core/selftest.eg` | `test` blocks every build must pass | pin the behaviour you rely on |
 

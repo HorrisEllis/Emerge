@@ -26,6 +26,10 @@ const USAGE = `emerge ${lang.VERSION} — the Emerge language
                                                               validated against emerge/schemas/schema.component|hook|wire
   eg bootstrap [--strict | --status | --rollback]             rebuild the language from lang/core/*.eg (primitives,
                                                               prelude, selftest): quarantine → prove → integrate
+  eg native <file.eg> [-o out]                                compile Emerge to a Linux x86-64 executable with the self-hosted
+                                                              native compiler (native/bin/emerge; --stage0 runs it in the interpreter)
+  eg debug <ledger.json> <blame|why N|at N|follow|diff F|clip A B|report>   debug a run from its ledger (eg run --ledger out.json):
+                                                              why an entry happened, the world at tick N, where two runs diverge
   eg ast   <file.eg>                                          the checked syntax tree as JSON
   eg tokens <file.eg>                                         the token stream
   eg version
@@ -147,7 +151,25 @@ function main(argv) {
       const file = needFile(rest[0]);
       const r = lang.compileSource(fs.readFileSync(file, 'utf8'), path.basename(file));
       if (r.errors.length) { for (const d of r.errors) process.stderr.write(lang.fmtDiag(d, 'error') + '\n'); process.exitCode = 1; return; }
-      process.stdout.write(JSON.stringify(r.program, (k, v) => (k === 'binding' ? undefined : v), 2) + '\n');
+      process.stdout.write(JSON.stringify(r.program, (k, v) => (k === 'binding' ? undefined : typeof v === 'bigint' ? { bigint: v.toString() } : v), 2) + '\n');
+      return;
+    }
+    case 'native': {
+      // eg native <file.eg> [-o out]: the JS checker reports errors first (better messages), then the native compiler —
+      // written in Emerge (native/emerge.eg: front.eg + codegen.eg + the runtime rt.eg) — writes the executable.
+      // If the self-hosted binary native/bin/emerge exists it does the work (no Node in the compile); otherwise this is
+      // stage 0: the interpreter runs native/emerge.eg once.
+      const file = needFile(rest[0]);
+      const oi = rest.indexOf('-o');
+      const outPath = path.resolve(oi > -1 ? rest[oi + 1] : path.basename(file).replace(/\.eg$/, ''));
+      const r = lang.compileSource(fs.readFileSync(file, 'utf8'), path.basename(file));
+      if (r.errors.length) { for (const d of r.errors) process.stderr.write(lang.fmtDiag(d, 'error') + '\n'); process.exitCode = 1; return; }
+      const bin = path.join(__dirname, 'native', 'bin', 'emerge');
+      const useBin = fs.existsSync(bin) && process.platform === 'linux' && process.arch === 'x64' && !rest.includes('--stage0');
+      const cmd = useBin ? [bin, [path.resolve(file), '-o', outPath]] : [process.execPath, [__filename, 'run', path.join(__dirname, 'native', 'emerge.eg'), path.resolve(file), '-o', outPath]];
+      const cg = require('child_process').spawnSync(cmd[0], cmd[1], { encoding: 'utf8', maxBuffer: 1 << 28 });
+      if (cg.status !== 0) { process.stderr.write((cg.stderr || cg.stdout || 'native: code generation failed') + '\n'); process.exitCode = 1; return; }
+      process.stdout.write('wrote ' + path.relative(process.cwd(), outPath) + '\n');
       return;
     }
     case 'tokens': {
@@ -159,6 +181,7 @@ function main(argv) {
       } catch (e) { die(`error: ${e.message}`, 1); }
       return;
     }
+    case 'debug': { process.exitCode = require('../observe/cli').run(rest); return; }
     case 'bootstrap': {
       const bs = require('./bootstrap');
       if (rest.includes('--status')) {

@@ -63,7 +63,7 @@ function check(program) {
   // ── expressions ────────────────────────────────────────────────────────────
   function expr(e, scope, ctx) {
     switch (e.type) {
-      case 'Num': case 'Bool': case 'Null': return;
+      case 'Num': case 'Int': case 'Bool': case 'Null': return;
       case 'Str': for (const p of e.parts) if (typeof p !== 'string') expr(p, scope, ctx); return;
       case 'List': for (const x of e.items) expr(x, scope, ctx); return;
       case 'Map': for (const x of e.entries) expr(x.value, scope, ctx); return;

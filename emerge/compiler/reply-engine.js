@@ -141,6 +141,11 @@ class SkipGate extends Gate {
 
     for (const node of remaining) {
       const d = decideTier(node);
+      // §2026-10-28 — built modules (spec build plan) are skipped: nothing to emit, nothing to send to a model.
+      if (d.tier === 'DONE') {
+        skip.push(entry(node, d.reason, { done: true }));
+        continue;
+      }
       if (d.tier === 'SKIP') {
         const gaps    = gapField ? gapField.getByNode(node.id) : [];
         const topGap  = gaps[0];
@@ -171,6 +176,12 @@ class DeferGate extends Gate {
     const stillLeft = [];
 
     for (const node of remaining) {
+      // §2026-10-28 — a module the spec says waits on a decision is deferred, named, whatever its gaps.
+      const td = decideTier(node);
+      if (td.tier === 'DEFERRED') {
+        defer.push(entry(node, td.reason, { blockedBy: td.blockedBy ?? [] }));
+        continue;
+      }
       if (!gapField) { stillLeft.push(node); continue; }
 
       const nodeGaps = gapField.getByNode(node.id);

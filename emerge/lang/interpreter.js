@@ -43,6 +43,7 @@ function createInterpreter(rt, file) {
   function ev(e, env) {
     switch (e.type) {
       case 'Num': return e.value;
+      case 'Int': return e.value;
       case 'Bool': return e.value;
       case 'Null': return null;
       case 'Str': return $.str(e.parts.map(p => (typeof p === 'string' ? p : ev(p, env))));

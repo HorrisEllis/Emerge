@@ -1,0 +1,16 @@
+fn rle(s) {
+  if len(s) == 0 { return "" }
+  var out = ""
+  var cur = s[0]
+  var run = 0
+  for ch in split(s, "") {
+    if ch == cur {
+      run += 1
+    } else {
+      out = out + cur + str(run)
+      cur = ch
+      run = 1
+    }
+  }
+  return out + cur + str(run)
+}

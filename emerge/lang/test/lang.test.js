@@ -224,7 +224,7 @@ t('compartment fns see a handler\'s working copy', () => assert.strictEqual(
   '10\n'));
 t('the ledger is hash-chained and verifiable', () => assert.strictEqual(
   out(BANK + 'emit "dep" { n: 1 }\nrecord "note" { x: 1 }\nlet l = ledger()\nprint(ledger_verify(), l[0].kind, l[-1].kind, l[1].prev == l[0].hash)'),
-  'moved 1\ntrue seed note true\n'));
+  'moved 1\ntrue genesis note true\n'));
 t('promote: a true proof records and emits promoted; a false proof opens a logical gap', () => assert.strictEqual(
   out('on "promoted" (p) { print("promoted", p.value) }\non "gap.opened" (g) { print(g.type, g.pressure) }\npromote "a" with proof 1 == 1\npromote "b" with proof 1 == 2'),
   'promoted a\nlogical 0.9\n'));
@@ -271,8 +271,8 @@ t('args() and --seed reach the program', () => assert.strictEqual(out('print(arg
 // ════════════════════════════════════════════════════════════════════════════
 section('components — compile time');
 const CMP = (name, body, extra = '') => `component ${name} {\n  id = "ns.${name.toLowerCase()}"\n  namespace = "ns"\n  version = "1.0.0"\n${extra}${body}\n}\n`;
-const PAIR = CMP('A', '  in go(x: { n: int }) { emit out done { n: x.n } }\n  out done: { n: int }') +
-             CMP('B', '  state { total: 0 }\n  in take(x: { n: int }) { state.total += x.n }');
+const PAIR = CMP('A', '  in go(x: { n: num }) { emit out done { n: x.n } }\n  out done: { n: num }') +
+             CMP('B', '  state { total: 0 }\n  in take(x: { n: num }) { state.total += x.n }');
 t('a component needs id, namespace and a semver version (EXECUTION_IS_TRACEABLE)', () => {
   compileErr('component C { id = "c"\n version = "1.0.0" }', 'declares no namespace');
   compileErr('component C { id = "c"\n namespace = "n" }', 'declares no version');
@@ -294,11 +294,11 @@ t('wire ends must exist and run out → in', () => {
 });
 t('a wire is declared once', () => compileErr(PAIR + 'wire A.done -> B.take\nwire A.done -> B.take', 'declared twice'));
 t('a wire between incompatible shapes is a seam mismatch', () => {
-  compileErr(CMP('A', '  in go { emit out done { n: "x" } }\n  out done: { n: string }') + CMP('B', '  in take(x: { n: int }) { }') + 'wire A.done -> B.take', '"n" is string on the out side but int on the in side');
-  compileErr(CMP('A', '  in go { }\n  out done: { m: int }') + CMP('B', '  in take(x: { n: int }) { }') + 'wire A.done -> B.take', 'the in hook needs "n"');
-  compileErr(CMP('A', '  in go { }\n  out done: { n: int?, m: int }') + CMP('B', '  in take(x: { n: int }) { }') + 'wire A.done -> B.take', 'int? on the out side but int');
+  compileErr(CMP('A', '  in go { emit out done { n: "x" } }\n  out done: { n: string }') + CMP('B', '  in take(x: { n: num }) { }') + 'wire A.done -> B.take', '"n" is string on the out side but num on the in side');
+  compileErr(CMP('A', '  in go { }\n  out done: { m: num }') + CMP('B', '  in take(x: { n: num }) { }') + 'wire A.done -> B.take', 'the in hook needs "n"');
+  compileErr(CMP('A', '  in go { }\n  out done: { n: num?, m: num }') + CMP('B', '  in take(x: { n: num }) { }') + 'wire A.done -> B.take', 'num? on the out side but num');
 });
-t('int flows into num; any accepts anything', () => compileOk(CMP('A', '  in go { }\n  out done: { n: int, k: string }') + CMP('B', '  in take(x: { n: num, k: any }) { }') + 'wire A.done -> B.take\nsend A.go { }'));
+t('num flows into num; any accepts anything', () => compileOk(CMP('A', '  in go { }\n  out done: { n: num, k: string }') + CMP('B', '  in take(x: { n: num, k: any }) { }') + 'wire A.done -> B.take\nsend A.go { }'));
 t('send needs a component in hook', () => {
   compileErr(PAIR + 'send A.done { n: 1 }', 'A.done is an out hook — send feeds in hooks');
   compileErr(PAIR + 'send A.nope { n: 1 }', 'has no in hook "nope"');
@@ -321,18 +321,18 @@ t('an out hook with no wire is logged as unrouted', () => {
   assert.strictEqual(r.err, '[emerge] 1 unrouted signal(s) logged to the ledger: A.done\n');
 });
 t('shapes are enforced at both ends: missing, extra, wrong type', () => {
-  fails(PAIR + 'wire A.done -> B.take\nsend A.go { }', 'in hook A.go field n must be int, got null');
+  fails(PAIR + 'wire A.done -> B.take\nsend A.go { }', 'in hook A.go field n must be num, got null');
   fails(PAIR + 'wire A.done -> B.take\nsend A.go { n: 1, extra: 2 }', 'in hook A.go has no field "extra"');
-  fails(CMP('A', '  in go { emit out done { n: 1.5 } }\n  out done: { n: int }') + 'send A.go', 'out hook A.done field n must be int, got num 1.5');
-  fails(CMP('A', '  in go(x: { n: int }) { }') + 'wire "s" -> A.go\nemit "s" { n: "x" }', 'in hook A.go field n must be int');
+  fails(CMP('A', '  in go { emit out done { n: 1i } }\n  out done: { n: num }') + 'send A.go', 'out hook A.done field n must be num, got int 1');
+  fails(CMP('A', '  in go(x: { n: num }) { }') + 'wire "s" -> A.go\nemit "s" { n: "x" }', 'in hook A.go field n must be num');
 });
 t('a boundary refuses like a hard constraint, and says it was the boundary', () => assert.strictEqual(
-  out(CMP('C', '  state { n: 0 }\n  boundary small { state.n < 3 }\n  in add(p: { k: int }) { state.n += p.k }') +
+  out(CMP('C', '  state { n: 0 }\n  boundary small { state.n < 3 }\n  in add(p: { k: num }) { state.n += p.k }') +
       'on "rejected" (r) { print("refused", r.constraint, r.boundary) }\nsend C.add { k: 2 }\nsend C.add { k: 2 }\nprint(C.state.n)'),
   'refused small true\n2\n'));
 t('a rejected in hook discards its out emits', () => {
-  const src = CMP('A', '  state { n: 0 }\n  boundary pos { state.n >= 0 }\n  in go(x: { n: int }) { state.n = x.n\n    emit out done { n: x.n } }\n  out done: { n: int }') +
-    CMP('B', '  state { total: 0 }\n  in take(x: { n: int }) { state.total += x.n }') +
+  const src = CMP('A', '  state { n: 0 }\n  boundary pos { state.n >= 0 }\n  in go(x: { n: num }) { state.n = x.n\n    emit out done { n: x.n } }\n  out done: { n: num }') +
+    CMP('B', '  state { total: 0 }\n  in take(x: { n: num }) { state.total += x.n }') +
     'on "rejected" (r) { }\nwire A.done -> B.take\nsend A.go { n: -1 }\nprint(B.state.total, map(filter(ledger(), fn(e) = e.kind == "rejected"), fn(e) = e.body.discarded))';
   assert.strictEqual(out(src), '0 [["A.done"]]\n');
 });
@@ -362,7 +362,7 @@ t('components() and eg components agree, and both validate against emerge/schema
   assert.deepStrictEqual(staticGraph.components.map(c => c.id), ['ns.a', 'ns.b']);
   assert.deepStrictEqual(staticGraph.hooks.map(h => `${h.id}/${h.direction}`), ['ns.a.go/in', 'ns.a.done/out', 'ns.b.take/in']);
   assert.deepStrictEqual(staticGraph.wires.map(w => w.id), ['ns.a.done->ns.b.take', 'signal:kick->ns.a.go']);
-  assert.deepStrictEqual(staticGraph.hooks[1].shape, { n: 'int' });
+  assert.deepStrictEqual(staticGraph.hooks[1].shape, { n: 'num' });
 });
 t('validation reads the schema files: a record missing a required field is caught', () => {
   const { validateRecords } = require('../components');
@@ -375,7 +375,7 @@ t('validation reads the schema files: a record missing a required field is caugh
 
 // ════════════════════════════════════════════════════════════════════════════
 section('kinds — compile time');
-const KIND = 'kind Stage {\n  require version\n  in take(x: { v: num })\n  out give: { v: num }\n  state { count: int }\n  boundary_count 1..2\n  fn seen()\n}\n';
+const KIND = 'kind Stage {\n  require version\n  in take(x: { v: num })\n  out give: { v: num }\n  state { count: num }\n  boundary_count 1..2\n  fn seen()\n}\n';
 const TPL = (head, body) => `template ${head} {\n  namespace = "p"\n  version = "1.0.0"\n${body}\n}\n`;
 const GOOD = '  state { count: 0 }\n  boundary b { state.count >= 0 }\n  in take(x: { v: num }) { state.count += 1\n    emit out give { v: x.v } }\n  out give: { v: num }\n  fn seen() = state.count';
 t('a template that conforms checks clean', () => compileOk(KIND + TPL('S() is Stage', GOOD) + 'let s = spawn S("a")\nwire "i" -> s.take\nwire s.give -> "o"'));
@@ -398,7 +398,7 @@ t('conformance: shapes must fit the kind', () => {
   conf(GOOD.replace('out give: { v: num }', 'out give: { w: num }').replace('emit out give { v: x.v }', 'emit out give { w: x.v }'), 'out hook "give" does not fit');
 });
 t('conformance: state, boundary count, fns, required identity', () => {
-  conf(GOOD.replace('state { count: 0 }', 'state { n: 0 }').replace(/state\.count/g, 'state.n'), 'missing state field "count" (int)');
+  conf(GOOD.replace('state { count: 0 }', 'state { n: 0 }').replace(/state\.count/g, 'state.n'), 'missing state field "count" (num)');
   conf(GOOD.replace('  boundary b { state.count >= 0 }\n', ''), 'needs 1 to 2 boundary invariant(s), has 0');
   conf(GOOD.replace('fn seen() = state.count', 'fn seen(x) = x'), 'fn seen takes 1 argument(s), the kind says 0');
   compileErr('kind K { require intent }\n' + TPL('S() is K', '  in a { }'), 'it requires intent');
@@ -432,7 +432,7 @@ t('spawn, despawn and wire change the world: never inside a handler', () => {
   compileErr(T + 'compartment K { id = "k"\n state { n: 0 }\n on "x" { wire "a" -> "b" } }', 'wire changes the world');
 });
 t('let x = spawn T(…) lets wires be checked against T at compile time', () => {
-  const T = TPL('A()', '  in go { }\n  out done: { n: int }') + TPL('B()', '  in take(x: { n: string }) { }');
+  const T = TPL('A()', '  in go { }\n  out done: { n: num }') + TPL('B()', '  in take(x: { n: string }) { }');
   compileErr(T + 'let a = spawn A("a")\nwire a.nope -> "x"', 'template A has no out hook "nope"');
   compileErr(T + 'let a = spawn A("a")\nlet b = spawn B("b")\nwire a.done -> b.take', 'seam mismatch');
   compileOk(T + 'var a = spawn A("a")\nwire a.nope -> "x"');   // a var may change: checked at run time instead
@@ -451,9 +451,9 @@ t('instance ids are unique; the id must be a string', () => {
 t('parameter annotations are checked at spawn', () => fails(PIPE + 'let a = spawn Scale("a", "x")', 'parameter f of Scale must be num'));
 t('a kind\'s typed state is enforced at spawn and before every commit', () => {
   fails(KIND + TPL('S() is Stage', GOOD.replace('state { count: 0 }', 'state { count: "zero" }').replace('boundary b { state.count >= 0 }', 'boundary b { state.count != "" }').replace('state.count += 1', 'state.count = state.count')) + 'let s = spawn S("a")',
-    'S(a) breaks kind Stage: state.count must be int, got string "zero"');
-  fails(KIND + TPL('S() is Stage', GOOD.replace('state.count += 1', 'state.count += 0.5')) + 'let s = spawn S("a")\nsend s.take { v: 1 }',
-    'S(a) breaks kind Stage: state.count must be int, got num 0.5');
+    'S(a) breaks kind Stage: state.count must be num, got string "zero"');
+  fails(KIND + TPL('S() is Stage', GOOD.replace('boundary b { state.count >= 0 }', 'boundary b { state.count != "" }').replace('state.count += 1', 'state.count = 1i')) + 'let s = spawn S("a")\nsend s.take { v: 1 }',
+    'S(a) breaks kind Stage: state.count must be num, got int 1');
 });
 t('a boundary over parameters refuses a bad instance at spawn', () =>
   fails(TPL('R(lo: num, hi: num)', '  boundary ordered { lo <= hi }\n  in a { }') + 'let r = spawn R("r", 5, 1)', 'R(r): initial state breaks boundary ordered'));
@@ -487,10 +487,53 @@ t('components() carries template and kinds; eg components exports kinds and temp
   assert.strictEqual(rec.id, 'a');
   const g = graphOfProgram(checkSrc(src).program);
   assert.deepStrictEqual(g.components, []);
-  assert.deepStrictEqual(g.kinds.map(k => [k.name, k.state, k.boundary_count]), [['Stage', { count: 'int' }, [1, 2]]]);
+  assert.deepStrictEqual(g.kinds.map(k => [k.name, k.state, k.boundary_count]), [['Stage', { count: 'num' }, [1, 2]]]);
   assert.deepStrictEqual(g.templates.map(t => [t.name, t.params, t.kinds]), [['Scale', ['f'], ['Stage']]]);
   assert.deepStrictEqual(validateRecords(g), []);
 });
+
+// ── 64-bit int (CIE-EG §3) ──
+t('42i is an int; ints add, subtract, multiply exactly to 2^63-1', () => assert.strictEqual(out('print(9223372036854775806i + 1i, 3037000499i * 3037000499i, 5i - 9i)'), '9223372036854775807 9223372030926249001 -4\n'));
+t('int overflow is an error, never a wrap', () => {
+  fails('print(9223372036854775807i + 1i)', 'int overflow in +');
+  fails('print(-9223372036854775807i - 2i)', 'int overflow in -');
+  fails('print(4294967296i * 4294967296i)', 'int overflow in *');
+  fails('print(2i ** 63i)', 'int overflow in **');
+  fails('print(-(-9223372036854775807i - 1i))', 'int overflow in unary -');
+  fails('print(idiv(-9223372036854775807i - 1i, -1i))', 'int overflow in idiv');
+  fails('print(int(\"9223372036854775808\"))', 'int overflow in int()');
+});
+t('an int literal above 2^63-1 is a lexer error', () => compileErr('print(9223372036854775808i)', 'larger than 2^63-1'));
+t('wrap_add / wrap_sub / wrap_mul wrap on purpose', () => assert.strictEqual(out('print(wrap_add(9223372036854775807i, 1i), wrap_sub(-9223372036854775807i - 1i, 1i), wrap_mul(4294967296i, 4294967296i))'), '-9223372036854775808 9223372036854775807 0\n'));
+t('int and num never mix, in arithmetic or comparison', () => {
+  fails('print(1i + 1)', 'does not mix int and num');
+  fails('print(1 * 2i)', 'does not mix int and num');
+  fails('print(1i < 2)', 'does not mix int and num');
+  fails('print(1i & 1)', 'does not mix int and num');
+  fails('print(\"a\" * 2i)', '*');
+});
+t('int equality is by value and never equal to a num', () => assert.strictEqual(out('print(5i == 5i, 5i == 5, [1i, 2i] == [1i, 2i], {k: 3i} == {k: 3i})'), 'true false true true\n'));
+t('int / int is refused; idiv floors; % is floored', () => {
+  fails('print(7i / 2i)', 'use idiv');
+  assert.strictEqual(out('print(idiv(7i, 2i), idiv(-7i, 2i), 7i % 3i, -7i % 3i)'), '3 -4 1 2\n');
+  fails('print(1i % 0i)', 'modulo by zero');
+});
+t('bit operations on ints use all 64 bits', () => assert.strictEqual(out('print(0xFFi & 0x0Fi, 0xF0i | 0x0Fi, 0xFFi ^ 0x0Fi, ~0i, 1i << 62i, 1i << 63i, -8i >> 1i, shr_u(-1i, 60i))'), '15 255 240 -1 4611686018427387904 -9223372036854775808 -4 15\n'));
+t('rotl / rotr on ints rotate 64 bits; on nums they stay 32-bit', () => assert.strictEqual(out('print(rotl(1i, 63i), rotr(1i, 1i), rotl(0x80000000i, 1i), rotl(0x80000000, 1))'), '-9223372036854775808 -9223372036854775808 4294967296 1\n'));
+t('int(x) and num(x) convert explicitly', () => {
+  assert.strictEqual(out('print(int(3.9), int(-3.9), int(\" 42 \"), num(7i), str(7i))'), '3 -3 42 7 7\n');
+  fails('print(int(\"1.5\"))', 'int cannot read');
+  fails('print(num(9007199254740993i))', 'not exactly representable');
+});
+t('the int type annotation is exact', () => {
+  fails('let x: int = 1', '"x" must be int, got num 1');
+  fails('let y: num = 1i', '"y" must be num, got int 1');
+  assert.strictEqual(out('fn f(a: int): int = a + 1i\nprint(f(41i))'), '42\n');
+});
+t('ints are data: json and the ledger record them exactly', () => assert.strictEqual(out('print(json({n: 9223372036854775807i}))'), '{"n":9223372036854775807}\n'));
+t('ranges, min, max, abs work on ints', () => assert.strictEqual(out('print(0i..3i, min(3i, 1i), max([3i, 9i, 2i]), abs(-4i))'), '[0, 1, 2] 1 9 4\n'));
+t('u64be / i64le / read_u64be take and return ints', () => assert.strictEqual(out('print(hex(u64be(258i)), hex(u64le(258)), hex(i64le(-2i)), read_u64be(u64be(1234567890123i), 0))'), '0000000000000102 0201000000000000 feffffffffffffff 1234567890123\n'));
+t('int in a component hook does not flow into a num hook', () => compileErr(CMP('A', '  in go { }\n  out done: { n: int }') + CMP('B', '  in take(x: { n: num }) { }') + 'wire A.done -> B.take', '"n" is int on the out side but num on the in side'));
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 process.exitCode = failed ? 1 : 0;

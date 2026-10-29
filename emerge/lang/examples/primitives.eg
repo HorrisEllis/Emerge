@@ -8,7 +8,7 @@ kind Stage {
   require version
   in take(x: { v: num })
   out give: { v: num }
-  state { count: int }
+  state { count: num }
   boundary_count 1..2
 }
 

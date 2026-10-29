@@ -15,7 +15,7 @@ component Sensor {
     state.seen += 1
     emit out sample { n: state.seen, celsius: r.value }
   }
-  out sample: { n: int, celsius: num }
+  out sample: { n: num, celsius: num }
 }
 
 component Smoother {
@@ -27,13 +27,13 @@ component Smoother {
 
   boundary bounded_window { len(state.window) <= 3 }
 
-  in sample(s: { n: int, celsius: num }) {
+  in sample(s: { n: num, celsius: num }) {
     var w = push(state.window, s.celsius)
     if len(w) > 3 { w = slice(w, 1) }
     state.window = w
     emit out smoothed { celsius: round(sum(w) / len(w) * 10) / 10, of: len(w) }
   }
-  out smoothed: { celsius: num, of: int }
+  out smoothed: { celsius: num, of: num }
 
   fn latest() = state.window[-1]
 }
@@ -46,7 +46,7 @@ component Alarm {
 
   boundary sane_limit { state.limit > 0 and state.limit < 100 }
 
-  in check(t: { celsius: num, of: int }) {
+  in check(t: { celsius: num, of: num }) {
     if t.celsius > state.limit and not state.tripped {
       state.tripped = true
       emit out alert { celsius: t.celsius }

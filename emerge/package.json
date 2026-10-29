@@ -7,8 +7,11 @@
   "scripts": {
     "compile": "node compiler/pipeline.js",
     "verify": "node verify.js",
-    "test": "node test/propagation.test.js && node test/kg.test.js && node test/tier-contract.test.js && node test/invariants.test.js && node test/gap-field.test.js && node test/reply-engine.test.js",
-    "test:lang": "node lang/test/lang.test.js && node lang/test/differential.test.js && node lang/test/bootstrap.test.js && node lang/test/ide.test.js",
+    "test": "node test/propagation.test.js && node test/kg.test.js && node test/tier-contract.test.js && node test/invariants.test.js && node test/gap-field.test.js && node test/reply-engine.test.js && node test/observe.test.js && node test/debug.test.js && node test/target.test.js && node test/build-spec.test.js && node test/core.test.js",
+    "plan": "node build-spec.js spec/cie-eg.spec --dry-run",
+    "scaffold": "node build-spec.js spec/cie-eg.spec",
+    "build:spec": "node build-spec.js spec/cie-eg.spec --build",
+    "test:lang": "node lang/test/lang.test.js && node lang/test/differential.test.js && node lang/test/bootstrap.test.js && node lang/test/ide.test.js && node lang/test/ledger.test.js && node lang/test/native.test.js && node lang/test/selfhost.test.js",
     "eg": "node lang/eg.js",
     "build": "node lang/eg.js bootstrap"
   },

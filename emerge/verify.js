@@ -30,15 +30,19 @@ function sanitizeSpec(raw) {
   );
 }
 const fs      = require('fs');
-const { ping, preflight } = require('./cortex-query');
+// §2026-10-28 — checks the host (default: local; --host <module> for a project's own), not Cortex
+const { loadHost } = require('./compiler/host');
 const { compile }         = require('./compiler');
 const { buildChunk, emitToPrompt, estimateTokens } = require('./chunk');
-const { writeback, summarizeWriteback } = require('./cortex-query/writeback');
+
 
 const args       = process.argv.slice(2);
-const specPath   = args.find(a => !a.startsWith('--')) ?? path.join(__dirname, 'SPEC_COMPILER.spec');
+const specPath   = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--host') ?? path.join(__dirname, 'SPEC_COMPILER.spec');
 const verbose    = args.includes('--verbose');
 const skipCortex = args.includes('--skip-cortex');
+const host       = loadHost(args.includes('--host') ? args[args.indexOf('--host') + 1] : undefined);
+const { ping, preflight, writeback } = host;
+const summarizeWriteback = host.summarize;
 
 const C = {
   reset: '\x1b[0m', green: '\x1b[32m', red: '\x1b[31m',
@@ -60,10 +64,10 @@ async function run() {
 
   // ── 1. Cortex ping ────────────────────────────────────────────────────────
   if (!skipCortex) {
-    process.stdout.write('  Cortex ping... ');
+    process.stdout.write(`  Host (${host.name}) ping... `);
     const health = await ping();
     if (health.reachable) {
-      console.log(ok(`reachable  status=${health.status}  uptime=${Math.floor(health.uptime)}s`));
+      console.log(ok(`reachable  status=${health.status}${health.uptime !== undefined ? '  uptime=' + Math.floor(health.uptime) + 's' : ''}`));
       if (verbose && health.tables) {
         const counts = Object.entries(health.tables).filter(([,v]) => v > 0);
         for (const [t, n] of counts.slice(0, 5)) console.log(dim(`    ${t}: ${n}`));
@@ -93,7 +97,7 @@ async function run() {
 
   // ── 3. Cortex preflight ───────────────────────────────────────────────────
   if (!skipCortex) {
-    process.stdout.write('  Cortex preflight... ');
+    process.stdout.write(`  Host (${host.name}) preflight... `);
     try {
       const pre = await preflight({ moduleName: 'spec-compiler', specPath, outputDir: './output' });
       const status = pre.skipGeneration ? 'SKIP (all files present)' : 'GENERATE';
@@ -240,7 +244,8 @@ async function run() {
         if (wb.seam?.ok)              parts.push('seam ok');
         if (wb.memory?.ok)            parts.push('memory ok');
         if (wb.errors?.length)        parts.push(`${wb.errors.length} warn(s)`);
-        const allOk = wb.commit?.ok && wb.seam?.ok && wb.memory?.ok;
+        if (wb.filesRecorded?.length) parts.push(`${wb.filesRecorded.length} files recorded`);
+        const allOk = host.name === 'local' ? wb.ok : (wb.commit?.ok && wb.seam?.ok && wb.memory?.ok);
         if (allOk) {
           console.log(ok(parts.join('  ')));
           results.pass++;

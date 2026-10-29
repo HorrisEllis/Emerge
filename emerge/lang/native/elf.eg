@@ -15,7 +15,7 @@ fn elf(items, entry) {
     x.le32(0), x.le16(64), x.le16(56), x.le16(1), x.le16(64), x.le16(0), x.le16(0)
   ]
   let phdr = [
-    x.le32(1), x.le32(5), x.le64(0), x.le64(BASE), x.le64(BASE),
+    x.le32(1), x.le32(7), x.le64(0), x.le64(BASE), x.le64(BASE),   // flags 7: read, write, execute (one segment: code, data, globals)
     x.le64(total), x.le64(total), x.le64(0x1000)
   ]
   return bytes([header, phdr, asm.code])

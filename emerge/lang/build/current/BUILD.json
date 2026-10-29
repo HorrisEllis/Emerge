@@ -1,14 +1,14 @@
 {
-  "emerge": "1.7.0",
-  "build": 1,
+  "emerge": "1.7.2",
+  "build": 6,
   "sources": {
-    "core/primitives.eg": "b293032dcefd718509e38b28943ecdff6c9d682de68a6295fcd9989ecfb41c27",
+    "core/primitives.eg": "89375c0d376ddbafff5b82056d27391de6457d225d79d8afbf4b618be3706b8e",
     "core/prelude.eg": "f91b20387e61d09186cb66f30e0f8067586522e333309f944f2fd644d66d2c56",
     "core/selftest.eg": "7a1b4f60fde76fb51565a73b189279bd4d1f3f8312e0a17d4a30b53f0c9bb56b"
   },
   "outputs": {
-    "primitives.json": "3b0acb7490c80e96032bf570724e2f3b92bb26b0c3710c4708f3c3bf8f01e49c",
-    "prelude.js": "47e5300a6547044acd3de4be20c4b630b52d407a20a02c66898c77543bcee84c"
+    "primitives.json": "36040565b786191466300e03bfc99e643cf5d3686e2220bd1f46fdb44fa7b041",
+    "prelude.js": "08befea3895a4b1c4a8b8984b26b0843e5852523b12d3b4b1725ca1006c3f7f5"
   },
   "prelude_builtins": [
     "map",

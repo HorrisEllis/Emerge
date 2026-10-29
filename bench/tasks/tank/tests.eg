@@ -1,0 +1,26 @@
+test "fill and drain" {
+  emit "fill" { amount: 20 }
+  emit "drain" { amount: 5 }
+  expect Tank.state.level == 65
+}
+test "overflow refused" {
+  emit "fill" { amount: 60 }
+  expect Tank.state.level == 50
+}
+test "underflow refused" {
+  emit "drain" { amount: 51 }
+  expect Tank.state.level == 50
+}
+test "edges allowed" {
+  emit "fill" { amount: 50 }
+  expect Tank.state.level == 100
+  emit "drain" { amount: 100 }
+  expect Tank.state.level == 0
+}
+test "audit trail" {
+  emit "fill" { amount: 10 }
+  emit "fill" { amount: 90 }
+  emit "drain" { amount: 20 }
+  let kinds = ledger() |> filter(fn(e) = e.kind == "transition" or e.kind == "rejected") |> map(fn(e) = e.kind)
+  expect kinds == ["transition", "rejected", "transition"]
+}

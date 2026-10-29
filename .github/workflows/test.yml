@@ -23,10 +23,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
-      # cortex write-back logs failures under NEXUS_DATA_ROOT; keep them out of the checkout
-      - name: keep logs out of the checkout
-        shell: bash
-        run: echo "NEXUS_DATA_ROOT=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
@@ -47,9 +43,9 @@ jobs:
         working-directory: emerge
         run: node test/propagation.test.js
 
-      - name: warp — tests
-        working-directory: warp
-        run: npm test
+      - name: emerge — standalone build tests (target, build-spec, core)
+        working-directory: emerge
+        run: node test/target.test.js && node test/build-spec.test.js && node test/core.test.js
 
       - name: tests left the checkout clean
         if: always()

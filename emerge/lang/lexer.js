@@ -2,7 +2,7 @@
 // emerge/lang/lexer.js — source → tokens.
 // component_id: emerge.lang.lexer · spec: emerge/lang/emerge-lang.spec (modules.lexer, grammar.terminators)
 //
-// Token: { t, v, line, col }   t ∈ NUM STR IDENT KW OP NL EOF
+// Token: { t, v, line, col }   t ∈ NUM INT STR IDENT KW OP NL EOF
 // STR tokens carry `parts`: an array of plain strings and token arrays (one per {interpolation}).
 // NEWLINE is a token (statements end at it) except inside ( ) and [ ], where it is whitespace.
 
@@ -60,6 +60,11 @@ function lex(src, file = '<input>', startLine = 1, startCol = 1) {
       const digit = hexa ? /[0-9a-fA-F_]/ : /[01_]/;
       while (digit.test(src[i] || '')) adv();
       const body = src.slice(s + 2, i).replace(/_/g, '');
+      if (body && src[i] === 'i' && !/[A-Za-z0-9_]/.test(src[i + 1] || '')) {   // 0xFFi · 0b1010i — a 64-bit int
+        const big = BigInt((hexa ? '0x' : '0b') + body);
+        if (big > 9223372036854775807n) err(`int literal ${src.slice(s, i)}i is larger than 2^63-1`, l, c);
+        adv(); push('INT', big, l, c); continue;
+      }
       if (!body || /[A-Za-z0-9_]/.test(src[i] || '')) err(`malformed ${hexa ? 'hex' : 'binary'} number "${src.slice(s, i + 1)}"`, l, c);
       const n = parseInt(body, hexa ? 16 : 2);
       if (!Number.isSafeInteger(n)) err(`number ${src.slice(s, i)} is larger than 2^53 and cannot be exact`, l, c);
@@ -77,6 +82,11 @@ function lex(src, file = '<input>', startLine = 1, startCol = 1) {
         while (/[0-9]/.test(src[i] || '')) adv();
       }
       const text = src.slice(s, i).replace(/_/g, '');
+      if (src[i] === 'i' && /^[0-9]+$/.test(text) && !/[A-Za-z0-9_]/.test(src[i + 1] || '')) {   // 42i — a 64-bit int
+        const big = BigInt(text);
+        if (big > 9223372036854775807n) err(`int literal ${text}i is larger than 2^63-1`, l, c);
+        adv(); push('INT', big, l, c); continue;
+      }
       if (/[A-Za-z_]/.test(src[i] || '')) err(`malformed number "${src.slice(s, i + 1)}"`, l, c);
       push('NUM', Number(text), l, c);
       continue;

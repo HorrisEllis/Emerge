@@ -1,0 +1,1469 @@
+// lang/native/codegen.eg — Emerge's native code generator, written in Emerge (CIE-EG sections 0 and 10).
+// compile_bundle(bundle) → the bytes of a Linux x86-64 ELF executable. No libc, no Node at run time.
+//
+// A bundle is { modules: [ { id, raw, ast, uses: { alias: id } } … ], main: id }, dependencies before dependents, with
+// the runtime (rt.eg, raw: true) first and the prelude (core/prelude.eg) after it. Ordinary modules compile against the
+// runtime: every value is a tagged 64-bit word (see rt.eg) and every operation on values is a call into it. Raw modules
+// (the runtime itself) compile to plain machine arithmetic on words, with intrinsics for memory, syscalls and overflow.
+//
+// Calling convention. Ordinary functions: the caller pushes the arguments left to right, then the callee's closure (0 for
+// a direct call), and pops them after the call; the callee finds its closure at [rbp+16] and argument i of n at
+// [rbp+24+8*(n-1-i)]; the result is in rax. Raw functions take no closure: argument i at [rbp+16+8*(n-1-i)].
+// A variable that some lambda captures lives in a cell (one heap word) so every closure shares it by reference, as in the
+// interpreter; a lambda's environment is the list of the cells it uses.
+//
+// This file avoids lambdas, pipes and try on purpose: it is written in the part of Emerge it compiles, so that it can
+// compile itself (stage 1 → stage 2). Anything outside the native subset is refused by name, never skipped.
+use "./x64.eg" as x
+use "./elf.eg" as elf
+
+var code = []
+var data = []
+var lbl = 0
+var strs = {}
+var locs = {}
+var mods = {}
+var mod = null
+var raw = false
+// the frame being compiled
+var scope = []
+var slot = 0
+var loops = []
+var tries = []
+var ret_label = ""
+var in_fn = false
+var boxed = {}
+var cur_loc = ""
+var loc_slot = 0
+// lambdas waiting to be compiled: { label, node, env, mod }
+var pending = []
+var thunks = {}
+
+fn e(item) { code[len(code)] = item }
+fn d(item) { data[len(data)] = item }
+fn fresh(p) {
+  lbl += 1
+  return p + str(lbl)
+}
+fn refuse(what) { raise("native: {what} is not in the native subset yet") }
+
+// ── numbers to bytes ─────────────────────────────────────────────────────────
+// eight little-endian bytes of a 64-bit int
+fn le64i(v) {
+  var out = []
+  for k in 0..8 { out[len(out)] = num(shr_u(v, k * 8) & 0xFFi) }
+  return out
+}
+fn fits32(v) { return v >= -2147483648i and v <= 2147483647i }
+// rax = the 64-bit pattern v (an int)
+fn load_imm(v) {
+  if fits32(v) { e(x.mov_ri(x.RAX, num(v))) } else { e(x.mov_ri64(x.RAX, le64i(v))) }
+}
+fn tagged_num(v) {
+  if v != floor(v) { refuse("a fractional num literal") }
+  if v > 9007199254740992 or v < -9007199254740992 { refuse("a num literal beyond 2^53") }
+  return int(v) * 8i + 1i
+}
+
+// ── static data ──────────────────────────────────────────────────────────────
+fn str_label(text) {
+  let have = get(strs, text)
+  if have != null { return have }
+  let l = fresh("str")
+  strs[text] = l
+  d({ align: 8 })
+  d({ label: l })
+  d(le64i(1i))
+  d(le64i(int(byte_len(text))))
+  d(le64i(int(len(text))))
+  d([bytes(text)])
+  return l
+}
+fn lea_label(l) {
+  e(x.lea_rip(x.RAX))
+  e({ rel32: l })
+}
+fn load_global(l) {
+  e(x.load_rip(x.RAX))
+  e({ rel32: l })
+}
+fn store_global(l) {
+  e(x.store_rip(x.RAX))
+  e({ rel32: l })
+}
+fn global_label(mid, name) { return "g:" + mid + ":" + name }
+fn export_label(mid, name) { return "x:" + mid + ":" + name }
+fn fn_label(mid, name) { return "f:" + mid + ":" + name }
+fn rt_label(name) { return "f:rt:" + name }
+fn rt_global(name) { return "g:rt:" + name }
+// a static closure for a named function: [K_FN][code][most arguments][no environment][name][fewest arguments]
+fn static_fn(label, nparams, name) { return static_fn_range(label, nparams, nparams, name) }
+fn static_fn_range(label, fewest, nparams, name) {
+  let l = "sfn:" + label
+  if has(thunks, l) { return l }
+  thunks[l] = true
+  let nl = str_label(name)
+  d({ align: 8 })
+  d({ label: l })
+  d(le64i(6i))
+  d({ abs64: label })
+  d(le64i(int(nparams)))
+  d(le64i(0i))
+  d({ abs64: nl })
+  d(le64i(int(fewest)))
+  return l
+}
+
+// ── source locations: the statement running now, for error messages and try ──
+fn set_loc(n) {
+  if raw or mod.no_loc or not has(n, "line") { return null }
+  let key = mod.file + ":" + str(n.line)
+  var l = get(locs, key)
+  if l == null {
+    l = fresh("loc")
+    locs[key] = l
+    let fl = str_label(mod.file)
+    d({ align: 8 })
+    d({ label: l })
+    d({ abs64: fl })
+    d(le64i(int(n.line)))
+  }
+  cur_loc = l
+  emit_loc()
+}
+// rax is kept: this runs right after calls, whose result is in rax
+fn emit_loc() {
+  if loc_slot != 0 {
+    // the prelude reports errors at its caller's line: put back the location it was called at
+    e(x.load(x.RCX, x.RBP, loc_slot))
+  } else {
+    if cur_loc == "" { return null }
+    e(x.lea_rip(x.RCX))
+    e({ rel32: cur_loc })
+  }
+  e(x.store_rip(x.RCX))
+  e({ rel32: rt_global("rt_loc") })
+}
+// ── calls ────────────────────────────────────────────────────────────────────
+fn call_label(l, nargs) {
+  e(x.call())
+  e({ rel32: l })
+  if nargs > 0 { e(x.alu_imm(0, x.RSP, 8 * nargs)) }
+}
+fn call_rt(name, nargs) { call_label(rt_label(name), nargs) }
+fn push_rax() { e(x.push(x.RAX)) }
+fn push_imm(v) {
+  load_imm(v)
+  push_rax()
+}
+// a direct call of an ordinary function: arguments are on the stack; push "no closure", call, pop
+fn call_direct(l, nargs) {
+  e(x.mov_ri(x.RAX, 0))
+  push_rax()
+  call_label(l, nargs + 1)
+  emit_loc()
+}
+
+// ── names ────────────────────────────────────────────────────────────────────
+fn lookup(name) {
+  var i = len(scope) - 1
+  while i >= 0 {
+    if scope[i].name == name { return scope[i] }
+    i -= 1
+  }
+  return null
+}
+fn new_slot() {
+  slot += 1
+  return -8 * slot
+}
+// a new local in a slot; boxed if some lambda in this frame captures the name
+fn declare(name) {
+  let off = new_slot()
+  scope[len(scope)] = { name: name, kind: "slot", off: off, boxed: has(boxed, name) }
+  return scope[len(scope) - 1]
+}
+fn hidden() {
+  let off = new_slot()
+  scope[len(scope)] = { name: "#" + str(slot), kind: "slot", off: off, boxed: false }
+  return off
+}
+fn pop_scope(n) {
+  var s = []
+  for i in 0..n { s[len(s)] = scope[i] }
+  scope = s
+}
+// what a name means here: { kind: slot | env | global | fn | module | builtin | prelude, … }
+fn resolve(name) {
+  let v = lookup(name)
+  if v != null { return v }
+  if has(mod.globals, name) { return { kind: "global", label: mod.globals[name] } }
+  if has(mod.fns, name) { return { kind: "fn", label: mod.fns[name].label, nparams: mod.fns[name].nparams } }
+  if has(mod.uses, name) { return { kind: "module", mid: mod.uses[name] } }
+  return { kind: "builtin", name: name }
+}
+// rax = the cell of a captured variable
+fn load_cell(r) {
+  if r.kind == "slot" {
+    e(x.load(x.RAX, x.RBP, r.off))
+    return null
+  }
+  e(x.load(x.RAX, x.RBP, 16))
+  e(x.load(x.RAX, x.RAX, 24))
+  e(x.load(x.RAX, x.RAX, 24))
+  e(x.load(x.RAX, x.RAX, 8 * r.idx))
+}
+// store rax into a fresh slot local (the declaration point of a let, a for variable or a caught error)
+fn init_local(v) {
+  if v.boxed {
+    push_rax()
+    call_rt("rt_cell_new", 1)
+  }
+  e(x.store(x.RBP, v.off, x.RAX))
+}
+fn load_name(name) {
+  let r = resolve(name)
+  if r.kind == "slot" {
+    e(x.load(x.RAX, x.RBP, r.off))
+    if r.boxed { e(x.load(x.RAX, x.RAX, 0)) }
+    return null
+  }
+  if r.kind == "env" {
+    load_cell(r)
+    e(x.load(x.RAX, x.RAX, 0))
+    return null
+  }
+  if r.kind == "global" {
+    load_global(r.label)
+    return null
+  }
+  if r.kind == "fn" {
+    lea_label(static_fn(r.label, r.nparams, name))
+    return null
+  }
+  if r.kind == "builtin" { return load_builtin_value(name) }
+  refuse("{name} used as a value ({r.kind})")
+}
+fn store_name(name) {
+  let r = resolve(name)
+  if r.kind == "slot" {
+    if r.boxed {
+      e(x.load(x.RCX, x.RBP, r.off))
+      e(x.store(x.RCX, 0, x.RAX))
+    } else {
+      e(x.store(x.RBP, r.off, x.RAX))
+    }
+    return null
+  }
+  if r.kind == "env" {
+    push_rax()
+    load_cell(r)
+    e(x.mov_rr(x.RCX, x.RAX))
+    e(x.pop(x.RAX))
+    e(x.store(x.RCX, 0, x.RAX))
+    return null
+  }
+  if r.kind == "global" {
+    store_global(r.label)
+    return null
+  }
+  refuse("assignment to {name} ({r.kind})")
+}
+
+// ── captured variables ───────────────────────────────────────────────────────
+// the names a body uses (reads, writes or calls) and the names it declares, not looking inside nested lambdas except
+// for their own free names. The sets being filled are wn_used and wn_declared.
+var wn_used = {}
+var wn_declared = {}
+var cap_out = {}
+fn walk_names(n) {
+  let t = type_of(n)
+  if t == "list" {
+    for it in n { walk_names(it) }
+    return null
+  }
+  if t != "map" { return null }
+  let ty = get(n, "type")
+  if ty == "Ident" {
+    wn_used[n.name] = true
+    return null
+  }
+  if ty == "Lambda" {
+    let inner = free_names(n)
+    for k, v in inner { wn_used[k] = true }
+    return null
+  }
+  if ty == "Let" { wn_declared[n.name] = true }
+  if ty == "For" {
+    wn_declared[n.a] = true
+    if n.b != null { wn_declared[n.b] = true }
+  }
+  if ty == "Try" and n.errName != null { wn_declared[n.errName] = true }
+  if ty == "Member" {
+    walk_names(n.obj)
+    return null
+  }
+  if ty == "FnDecl" { return null }
+  for k, v in n { walk_names(v) }
+}
+// the names a lambda uses but does not declare (its parameters, lets, loop variables)
+fn free_names(lam) {
+  let saved_used = wn_used
+  let saved_declared = wn_declared
+  wn_used = {}
+  wn_declared = {}
+  for p in lam.params { wn_declared[p.name] = true }
+  walk_names(lam.body)
+  var free = {}
+  for k, v in wn_used {
+    if not has(wn_declared, k) { free[k] = true }
+  }
+  wn_used = saved_used
+  wn_declared = saved_declared
+  return free
+}
+// the names some lambda directly inside this body captures: those locals live in cells
+fn captured_in(body) {
+  cap_out = {}
+  collect_captured(body)
+  return cap_out
+}
+fn collect_captured(n) {
+  let t = type_of(n)
+  if t == "list" {
+    for it in n { collect_captured(it) }
+    return null
+  }
+  if t != "map" { return null }
+  if get(n, "type") == "Lambda" {
+    let inner = free_names(n)
+    for k, v in inner { cap_out[k] = true }
+    return null
+  }
+  if get(n, "type") == "FnDecl" { return null }
+  for k, v in n { collect_captured(v) }
+}
+
+// slots a body needs: one per let, five per for, two per try, plus one per parameter (cells); lambdas are their own frames
+fn count_slots(n) {
+  let t = type_of(n)
+  if t == "list" {
+    var c = 0
+    for it in n { c += count_slots(it) }
+    return c
+  }
+  if t != "map" { return 0 }
+  let ty = get(n, "type")
+  if ty == "Lambda" or ty == "FnDecl" { return 0 }
+  var c = 0
+  if ty == "Let" { c = 1 }
+  if ty == "For" { c = 5 }
+  if ty == "Try" { c = 2 }
+  for k, v in n { c += count_slots(v) }
+  return c
+}
+
+// ── expressions: the value ends in rax ───────────────────────────────────────
+fn gen(n) {
+  let t = n.type
+  if t == "Num" {
+    if raw {
+      // raw code: a num literal is a machine word; beyond 2^53 it may not be exact, so write it as an int literal
+      if n.value > 9007199254740992 or n.value < -9007199254740992 { refuse("a raw num literal beyond 2^53 (write it with i)") }
+      load_imm(int(n.value))
+    } else {
+      load_imm(tagged_num(n.value))
+    }
+    return null
+  }
+  if t == "Int" {
+    let v = int(n.value.bigint)
+    if raw {
+      load_imm(v)
+      return null
+    }
+    if v >= -1152921504606846976i and v < 1152921504606846976i {
+      load_imm(v * 8i + 3i)
+      return null
+    }
+    let l = fresh("int")
+    d({ align: 8 })
+    d({ label: l })
+    d(le64i(5i))
+    d(le64i(v))
+    lea_label(l)
+    return null
+  }
+  if t == "Bool" {
+    load_bool(n.value)
+    return null
+  }
+  if t == "Null" {
+    if raw { load_imm(0i) } else { load_imm(2i) }
+    return null
+  }
+  if t == "Str" { return gen_str(n) }
+  if t == "Ident" { return load_name(n.name) }
+  if t == "List" { return gen_list(n) }
+  if t == "Map" { return gen_map(n) }
+  if t == "Unary" { return gen_unary(n) }
+  if t == "Binary" { return gen_binary(n) }
+  if t == "Logical" { return gen_logical(n) }
+  if t == "Coalesce" {
+    let done = fresh("co")
+    gen(n.l)
+    e(x.alu_imm(7, x.RAX, 2))
+    e(x.jcc("ne"))
+    e({ rel32: done })
+    gen(n.r)
+    e({ label: done })
+    return null
+  }
+  if t == "Index" {
+    if raw { refuse("indexing in raw code") }
+    gen(n.obj)
+    push_rax()
+    gen(n.index)
+    push_rax()
+    call_rt("rt_index", 2)
+    return null
+  }
+  if t == "Member" { return gen_member(n) }
+  if t == "Call" { return gen_call(n) }
+  if t == "Lambda" { return gen_lambda(n) }
+  refuse("expression {t}")
+}
+
+fn gen_str(n) {
+  var pieces = []
+  var plain = true
+  for p in n.parts {
+    if type_of(p) == "string" {
+      if len(pieces) > 0 and type_of(pieces[len(pieces) - 1]) == "string" {
+        pieces[len(pieces) - 1] = pieces[len(pieces) - 1] + p
+      } else {
+        pieces[len(pieces)] = p
+      }
+    } else {
+      plain = false
+      pieces[len(pieces)] = p
+    }
+  }
+  if plain {
+    var text = ""
+    for p in pieces { text = text + p }
+    lea_label(str_label(text))
+    return null
+  }
+  if raw { refuse("string interpolation in raw code") }
+  lea_label(str_label(""))
+  for p in pieces {
+    push_rax()
+    if type_of(p) == "string" {
+      lea_label(str_label(p))
+    } else {
+      gen(p)
+      push_rax()
+      call_rt("rt_tostr", 1)
+    }
+    push_rax()
+    call_rt("rt_concat", 2)
+  }
+  return null
+}
+
+fn gen_list(n) {
+  if raw { refuse("a list literal in raw code") }
+  push_imm(int(len(n.items)))
+  call_rt("rt_list_new", 1)
+  push_rax()
+  for it in n.items {
+    gen(it)
+    e(x.load(x.RCX, x.RSP, 0))
+    e(x.push(x.RCX))
+    push_rax()
+    call_rt("rt_list_push", 2)
+  }
+  e(x.pop(x.RAX))
+  return null
+}
+
+fn gen_map(n) {
+  if raw { refuse("a map literal in raw code") }
+  call_rt("rt_map_new", 0)
+  push_rax()
+  for en in n.entries {
+    if type_of(en.key) != "string" { refuse("a computed map key") }
+    gen(en.value)
+    e(x.load(x.RCX, x.RSP, 0))
+    e(x.push(x.RCX))
+    e(x.push(x.RAX))
+    lea_label(str_label(en.key))
+    e(x.pop(x.RCX))
+    push_rax()
+    e(x.push(x.RCX))
+    call_rt("rt_map_set", 3)
+  }
+  e(x.pop(x.RAX))
+  return null
+}
+
+fn gen_unary(n) {
+  gen(n.expr)
+  if raw {
+    if n.op == "-" {
+      e(x.neg_r(x.RAX))
+      return null
+    }
+    if n.op == "not" {
+      e(x.test_rr(x.RAX, x.RAX))
+      e(x.setcc("eq"))
+      e(x.movzx_rax_al())
+      return null
+    }
+    if n.op == "~" {
+      e(x.not_r(x.RAX))
+      return null
+    }
+    refuse("unary {n.op} in raw code")
+  }
+  push_rax()
+  if n.op == "-" { call_rt("rt_neg", 1) } else if n.op == "not" { call_rt("rt_not", 1) } else if n.op == "~" { call_rt("rt_bnot", 1) } else {
+    refuse("unary {n.op}")
+  }
+  return null
+}
+
+let DYN_OPS = { "+": "rt_add", "-": "rt_sub", "*": "rt_mul", "/": "rt_div", "%": "rt_mod", "==": "rt_eq", "!=": "rt_ne",
+  "<": "rt_lt", "<=": "rt_le", ">": "rt_gt", ">=": "rt_ge", "contains": "rt_contains", "starts_with": "rt_starts_with",
+  "ends_with": "rt_ends_with", "&": "rt_band", "|": "rt_bor", "^": "rt_bxor", "<<": "rt_shl", ">>": "rt_sar",
+  "**": "rt_pow" }
+let RAW_CMP = { "==": "eq", "!=": "ne", "<": "lt", "<=": "le", ">": "gt", ">=": "ge" }
+
+fn gen_binary(n) {
+  let op = n.op
+  if raw { return gen_raw_binary(n) }
+  let f = get(DYN_OPS, op)
+  if f == null { refuse("operator {op}") }
+  gen(n.l)
+  push_rax()
+  gen(n.r)
+  push_rax()
+  call_rt(f, 2)
+  return null
+}
+fn gen_raw_binary(n) {
+  let op = n.op
+  gen(n.l)
+  push_rax()
+  gen(n.r)
+  e(x.mov_rr(x.RCX, x.RAX))
+  e(x.pop(x.RAX))
+  if op == "+" { e(x.alu_rr(x.ADD, x.RAX, x.RCX)) }
+  else if op == "-" { e(x.alu_rr(x.SUB, x.RAX, x.RCX)) }
+  else if op == "*" { e(x.imul_rr(x.RAX, x.RCX)) }
+  else if op == "&" { e(x.alu_rr(x.AND, x.RAX, x.RCX)) }
+  else if op == "|" { e(x.alu_rr(x.OR, x.RAX, x.RCX)) }
+  else if op == "^" { e(x.alu_rr(x.XOR, x.RAX, x.RCX)) }
+  else if op == "<<" { e(x.shift_cl(x.SHL, x.RAX)) }
+  else if op == ">>" { e(x.shift_cl(x.SAR, x.RAX)) }
+  else if op == "/" or op == "%" {
+    e(x.cqo())
+    e(x.idiv_r(x.RCX))
+    if op == "%" { e(x.mov_rr(x.RAX, x.RDX)) }
+  } else if has(RAW_CMP, op) {
+    e(x.alu_rr(x.CMP, x.RAX, x.RCX))
+    e(x.setcc(RAW_CMP[op]))
+    e(x.movzx_rax_al())
+  } else {
+    refuse("operator {op} in raw code")
+  }
+  return null
+}
+
+// truth of rax → flags (nz = true). Ordinary code insists on a bool, as the interpreter does.
+fn test_truth(who) {
+  if raw {
+    e(x.test_rr(x.RAX, x.RAX))
+    return null
+  }
+  push_rax()
+  lea_label(str_label(who))
+  push_rax()
+  call_rt("rt_truth", 2)
+  e(x.test_rr(x.RAX, x.RAX))
+}
+fn load_bool(b) {
+  if raw {
+    if b { load_imm(1i) } else { load_imm(0i) }
+  } else {
+    if b { load_imm(18i) } else { load_imm(10i) }
+  }
+}
+fn gen_logical(n) {
+  let no = fresh("lf")
+  let yes = fresh("lt")
+  let done = fresh("ld")
+  gen(n.l)
+  test_truth(n.op)
+  if n.op == "and" {
+    e(x.jcc("eq"))
+    e({ rel32: no })
+  } else {
+    e(x.jcc("ne"))
+    e({ rel32: yes })
+  }
+  gen(n.r)
+  test_truth(n.op)
+  e(x.jcc("eq"))
+  e({ rel32: no })
+  e({ label: yes })
+  load_bool(true)
+  e(x.jmp())
+  e({ rel32: done })
+  e({ label: no })
+  load_bool(false)
+  e({ label: done })
+  return null
+}
+
+fn gen_member(n) {
+  if n.obj.type == "Ident" {
+    let r = resolve(n.obj.name)
+    if r.kind == "module" {
+      let m = mods[r.mid]
+      if has(m.globals, n.name) {
+        // the interpreter exports a module's top-level values as they stood when it finished loading
+        load_global(export_label(m.id, n.name))
+        return null
+      }
+      if has(m.fns, n.name) {
+        lea_label(static_fn(m.fns[n.name].label, m.fns[n.name].nparams, n.name))
+        return null
+      }
+      refuse("{n.obj.name}.{n.name}: no such name in that module")
+    }
+  }
+  if raw { refuse("a field in raw code") }
+  gen(n.obj)
+  push_rax()
+  lea_label(str_label(n.name))
+  push_rax()
+  call_rt("rt_member", 2)
+  return null
+}
+
+// ── lambdas ──────────────────────────────────────────────────────────────────
+// a closure: its code is compiled later as its own frame; its environment is the cells of the free names this frame has
+fn gen_lambda(n) {
+  if raw { refuse("a lambda in raw code") }
+  let l = fresh("lam")
+  var env = []
+  for name, v in free_names(n) {
+    let r = lookup(name)
+    if r != null { env[len(env)] = { name: name, r: r } }
+  }
+  // code address, parameter count, environment, name
+  lea_label(l)
+  push_rax()
+  push_imm(int(len(n.params)))
+  if len(env) == 0 {
+    push_imm(0i)
+  } else {
+    push_imm(int(len(env)))
+    call_rt("rt_list_new", 1)
+    push_rax()
+    for en in env {
+      if en.r.kind == "slot" and not en.r.boxed { raise("native: internal — {en.name} is captured but not in a cell") }
+      load_cell(en.r)
+      e(x.load(x.RCX, x.RSP, 0))
+      e(x.push(x.RCX))
+      push_rax()
+      call_rt("rt_list_push", 2)
+    }
+  }
+  lea_label(str_label("anonymous"))
+  push_rax()
+  call_rt("rt_closure_new", 4)
+  var names = []
+  for en in env { names[len(names)] = en.name }
+  pending[len(pending)] = { label: l, node: n, env: names, mod: mod }
+  return null
+}
+
+// ── calls ────────────────────────────────────────────────────────────────────
+// builtin name → [runtime function, fewest arguments, most arguments]
+let BUILTINS = {
+  len: ["rt_b_len", 1, 1], str: ["rt_b_str", 1, 1], repr: ["rt_b_repr", 1, 1], type_of: ["rt_b_type_of", 1, 1],
+  int: ["rt_b_int", 1, 1], num: ["rt_b_num", 1, 1], has: ["rt_b_has", 2, 2], get: ["rt_b_get", 2, 3],
+  keys: ["rt_b_keys", 1, 1], values: ["rt_b_values", 1, 1], slice: ["rt_b_slice", 2, 3], push: ["rt_b_push", 2, 2],
+  byte_len: ["rt_b_byte_len", 1, 1], bytes: ["rt_b_bytes", 1, 1], range: ["rt_b_range", 1, 3], join: ["rt_b_join", 1, 2],
+  raise: ["rt_b_raise", 1, 1], read_file: ["rt_b_read_file", 1, 1], read_bytes: ["rt_b_read_bytes", 1, 1],
+  write_file: ["rt_b_write_file", 2, 2], write_bytes: ["rt_b_write_bytes", 2, 2], chmod_exec: ["rt_b_chmod_exec", 1, 1],
+  args: ["rt_b_args", 0, 0], idiv: ["rt_idiv", 2, 2], shr_u: ["rt_shr_u", 2, 2], floor: ["rt_b_floor", 1, 1],
+  utf8: ["rt_b_utf8", 1, 1], truthy: ["rt_b_truthy", 2, 2], split: ["rt_b_split", 2, 2],
+  find_text: ["rt_b_find_text", 2, 2]
+}
+// builtins that take any number of arguments: the arguments go to the runtime as one list
+let VARIADIC = { print: "rt_print", min: "rt_b_min", max: "rt_b_max" }
+let INTRINSICS = { mem_get: 1, mem_set: 2, mem_get8: 1, mem_set8: 2, mem_copy: 3, sys6: 6, add_ovf: 2, sub_ovf: 2,
+  mul_ovf: 2, entry_sp: 0, shr_u: 2, unwind: 1, f_add: 2, f_sub: 2, f_mul: 2, f_div: 2, f_sqrt: 1, f_of_int: 1,
+  f_trunc: 1, f_lt: 2, f_le: 2, f_eq: 2 }
+// IEEE double operations on 64-bit patterns (SSE2): rax = first operand, rcx = second → xmm0, xmm1
+let MOVQ_X0_RAX = [0x66, 0x48, 0x0F, 0x6E, 0xC0]
+let MOVQ_X1_RCX = [0x66, 0x48, 0x0F, 0x6E, 0xC9]
+let MOVQ_RAX_X0 = [0x66, 0x48, 0x0F, 0x7E, 0xC0]
+let F_OPS = { f_add: 0x58, f_sub: 0x5C, f_mul: 0x59, f_div: 0x5E }
+
+fn prelude_fn(name) {
+  if not has(mods, "prelude") { return null }
+  return get(mods["prelude"].fns, name)
+}
+// a builtin used as a value: a small function in the ordinary convention that calls the runtime (one per builtin)
+fn load_builtin_value(name) {
+  let p = prelude_fn(name)
+  if p != null {
+    lea_label(static_fn(p.label, p.nparams, name))
+    return null
+  }
+  let b = get(BUILTINS, name)
+  if b == null { refuse("{name} used as a value") }
+  lea_label(static_fn_range("bt:" + name, b[1], b[2], name))
+  return null
+}
+fn gen_thunks() {
+  for name, b in BUILTINS {
+    if has(thunks, "sfn:bt:" + name) {
+      // argument i of n is at [rbp+24+8*(n-1-i)], n = rt_nargs; missing optional arguments are null
+      let np = b[2]
+      e({ label: "bt:" + name })
+      e(x.push(x.RBP))
+      e(x.mov_rr(x.RBP, x.RSP))
+      for i in 0..np {
+        let miss = fresh("btm")
+        let next = fresh("btn")
+        load_global(rt_global("rt_nargs"))
+        e(x.mov_rr(x.RCX, x.RAX))
+        e(x.alu_imm(7, x.RCX, i))
+        e(x.jcc("le"))
+        e({ rel32: miss })
+        // rax = 24 + 8*(n-1-i) + rbp
+        e(x.alu_imm(5, x.RAX, 1 + i))
+        e(x.shift_imm(x.SHL, x.RAX, 3))
+        e(x.alu_imm(0, x.RAX, 24))
+        e(x.alu_rr(x.ADD, x.RAX, x.RBP))
+        e(x.load(x.RAX, x.RAX, 0))
+        e(x.jmp())
+        e({ rel32: next })
+        e({ label: miss })
+        load_imm(2i)
+        e({ label: next })
+        push_rax()
+      }
+      call_rt(b[0], np)
+      e(x.mov_rr(x.RSP, x.RBP))
+      e(x.pop(x.RBP))
+      e(x.ret())
+    }
+  }
+}
+
+fn push_args(args) {
+  for a in args {
+    gen(a)
+    push_rax()
+  }
+}
+// call a value: callee and arguments are on the stack (callee first); check it is a fn of the right arity, call it
+fn call_value(nargs) {
+  e(x.load(x.RAX, x.RSP, 8 * nargs))
+  push_rax()
+  push_rax()
+  push_imm(int(nargs))
+  call_rt("rt_call_check", 2)
+  e(x.call_r(x.RAX))
+  e(x.alu_imm(0, x.RSP, 8 * (nargs + 2)))
+  emit_loc()
+}
+fn gen_call(n) {
+  let c = n.callee
+  if c.type == "Member" and c.obj.type == "Ident" {
+    let r = resolve(c.obj.name)
+    if r.kind == "module" {
+      let m = mods[r.mid]
+      if not has(m.fns, c.name) { refuse("{c.obj.name}.{c.name}: no such function in that module") }
+      let f = m.fns[c.name]
+      if len(n.args) != f.nparams { raise("native: {c.obj.name}.{c.name} takes {f.nparams} argument(s), got {len(n.args)}") }
+      push_args(n.args)
+      call_direct(f.label, len(n.args))
+      return null
+    }
+  }
+  if c.type == "Ident" {
+    if raw and has(INTRINSICS, c.name) { return gen_intrinsic(c.name, n.args) }
+    let r = resolve(c.name)
+    if r.kind == "fn" {
+      if len(n.args) != r.nparams { raise("native: {c.name} takes {r.nparams} argument(s), got {len(n.args)}") }
+      push_args(n.args)
+      if raw { call_label(r.label, len(n.args)) } else { call_direct(r.label, len(n.args)) }
+      return null
+    }
+    if r.kind == "builtin" { return gen_builtin_call(c.name, n.args) }
+  }
+  if raw { refuse("calling a value in raw code") }
+  gen(c)
+  push_rax()
+  push_args(n.args)
+  call_value(len(n.args))
+  return null
+}
+fn gen_builtin_call(name, args) {
+  if raw { return gen_intrinsic(name, args) }
+  if has(VARIADIC, name) {
+    push_imm(int(len(args)))
+    call_rt("rt_list_new", 1)
+    push_rax()
+    for a in args {
+      gen(a)
+      e(x.load(x.RCX, x.RSP, 0))
+      e(x.push(x.RCX))
+      push_rax()
+      call_rt("rt_list_push", 2)
+    }
+    call_rt(VARIADIC[name], 1)
+    return null
+  }
+  // the prelude's fns replace natives of the same name, as in the interpreter
+  let p = prelude_fn(name)
+  if p != null {
+    if len(args) != p.nparams { raise("native: {name} takes {p.nparams} argument(s), got {len(args)}") }
+    push_args(args)
+    call_direct(p.label, len(args))
+    return null
+  }
+  let b = get(BUILTINS, name)
+  if b == null { refuse("the builtin {name}") }
+  let na = len(args)
+  if na < b[1] or na > b[2] { raise("native: {name} takes {b[1]} to {b[2]} argument(s), got {na}") }
+  push_args(args)
+  var k = na
+  while k < b[2] {
+    push_imm(2i)
+    k += 1
+  }
+  call_rt(b[0], b[2])
+  return null
+}
+
+fn gen_intrinsic(name, args) {
+  let want = get(INTRINSICS, name)
+  if want == null { refuse("{name} in raw code") }
+  if len(args) != want { raise("native: {name} takes {want} argument(s)") }
+  if name == "entry_sp" {
+    load_global("entry_sp")
+    return null
+  }
+  if name == "mem_get" {
+    gen(args[0])
+    e(x.load(x.RAX, x.RAX, 0))
+    return null
+  }
+  if name == "mem_get8" {
+    gen(args[0])
+    e(x.load8(x.RAX, x.RAX, 0))
+    return null
+  }
+  if name == "mem_set" or name == "mem_set8" {
+    gen(args[0])
+    push_rax()
+    gen(args[1])
+    e(x.pop(x.RCX))
+    if name == "mem_set" { e(x.store(x.RCX, 0, x.RAX)) } else { e(x.store8(x.RCX, 0, x.RAX)) }
+    return null
+  }
+  if name == "mem_copy" {
+    push_args(args)
+    e(x.pop(x.RCX))
+    e(x.pop(x.RSI))
+    e(x.pop(x.RDI))
+    e(x.rep_movsb())
+    return null
+  }
+  if name == "unwind" {
+    // jump to a try's handler: rsp = the handler record, rbp = the frame that entered the try
+    gen(args[0])
+    e(x.mov_rr(x.RSP, x.RAX))
+    e(x.load(x.RBP, x.RSP, 8))
+    e([0xFF, 0x24, 0x24])
+    return null
+  }
+  if name == "sys6" {
+    push_args(args)
+    e(x.pop(x.RAX))
+    e(x.mov_r8_rr(x.RAX))
+    e(x.pop(x.RAX))
+    e(x.mov_r10_rr(x.RAX))
+    e(x.pop(x.RDX))
+    e(x.pop(x.RSI))
+    e(x.pop(x.RDI))
+    e(x.pop(x.RAX))
+    e([0x4D, 0x31, 0xC9])
+    e(x.syscall())
+    return null
+  }
+  if name == "f_sqrt" or name == "f_of_int" or name == "f_trunc" {
+    gen(args[0])
+    if name == "f_sqrt" {
+      e(MOVQ_X0_RAX)
+      e([0xF2, 0x0F, 0x51, 0xC0])
+      e(MOVQ_RAX_X0)
+    } else if name == "f_of_int" {
+      e([0xF2, 0x48, 0x0F, 0x2A, 0xC0])
+      e(MOVQ_RAX_X0)
+    } else {
+      e(MOVQ_X0_RAX)
+      e([0xF2, 0x48, 0x0F, 0x2C, 0xC0])
+    }
+    return null
+  }
+  // two-operand intrinsics: rax = first, rcx = second
+  gen(args[0])
+  push_rax()
+  gen(args[1])
+  e(x.mov_rr(x.RCX, x.RAX))
+  e(x.pop(x.RAX))
+  if name == "shr_u" {
+    e(x.shift_cl(x.SHR, x.RAX))
+    return null
+  }
+  if has(F_OPS, name) {
+    e(MOVQ_X0_RAX)
+    e(MOVQ_X1_RCX)
+    e([0xF2, 0x0F, F_OPS[name], 0xC1])
+    e(MOVQ_RAX_X0)
+    return null
+  }
+  if name == "f_lt" or name == "f_le" or name == "f_eq" {
+    // unordered (NaN) compares false: seta / setae on ucomisd b, a; sete and setnp for equality
+    e(MOVQ_X0_RAX)
+    e(MOVQ_X1_RCX)
+    if name == "f_eq" {
+      e([0x66, 0x0F, 0x2E, 0xC1, 0x0F, 0x94, 0xC0, 0x0F, 0x9B, 0xC1, 0x20, 0xC8])
+    } else if name == "f_lt" {
+      e([0x66, 0x0F, 0x2E, 0xC8, 0x0F, 0x97, 0xC0])
+    } else {
+      e([0x66, 0x0F, 0x2E, 0xC8, 0x0F, 0x93, 0xC0])
+    }
+    e(x.movzx_rax_al())
+    return null
+  }
+  if name == "add_ovf" { e(x.alu_rr(x.ADD, x.RAX, x.RCX)) }
+  if name == "sub_ovf" { e(x.alu_rr(x.SUB, x.RAX, x.RCX)) }
+  if name == "mul_ovf" { e(x.imul_rr(x.RAX, x.RCX)) }
+  e(x.setcc("o"))
+  e(x.movzx_rax_al())
+  return null
+}
+
+// ── statements ───────────────────────────────────────────────────────────────
+fn gen_block(b) {
+  let saved = len(scope)
+  for s in b.body { gen_stmt(s, false) }
+  pop_scope(saved)
+}
+fn gen_body(n) {
+  if n.type == "Block" { gen_block(n) } else { gen_stmt(n, false) }
+}
+fn assign_op_fn(op) {
+  if op == "+=" { return "rt_add" }
+  if op == "-=" { return "rt_sub" }
+  if op == "*=" { return "rt_mul" }
+  if op == "/=" { return "rt_div" }
+  refuse("assignment operator {op}")
+}
+fn raw_assign_op(op) {
+  if op == "+=" { e(x.alu_rr(x.ADD, x.RAX, x.RCX)) }
+  else if op == "-=" { e(x.alu_rr(x.SUB, x.RAX, x.RCX)) }
+  else if op == "*=" { e(x.imul_rr(x.RAX, x.RCX)) }
+  else { refuse("assignment operator {op} in raw code") }
+}
+fn gen_assign(n) {
+  let tg = n.target
+  if tg.type == "Ident" {
+    if n.op == "=" {
+      gen(n.expr)
+    } else {
+      load_name(tg.name)
+      push_rax()
+      gen(n.expr)
+      if raw {
+        e(x.mov_rr(x.RCX, x.RAX))
+        e(x.pop(x.RAX))
+        raw_assign_op(n.op)
+      } else {
+        push_rax()
+        call_rt(assign_op_fn(n.op), 2)
+      }
+    }
+    store_name(tg.name)
+    return null
+  }
+  if raw { refuse("assignment to {tg.type} in raw code") }
+  if tg.type == "Index" or tg.type == "Member" {
+    var setter = "rt_setindex"
+    gen(tg.obj)
+    push_rax()
+    if tg.type == "Index" {
+      gen(tg.index)
+    } else {
+      lea_label(str_label(tg.name))
+      setter = "rt_setmember"
+    }
+    push_rax()
+    if n.op == "=" {
+      gen(n.expr)
+    } else {
+      e(x.load(x.RCX, x.RSP, 8))
+      e(x.push(x.RCX))
+      e(x.load(x.RCX, x.RSP, 8))
+      e(x.push(x.RCX))
+      if tg.type == "Index" { call_rt("rt_index", 2) } else { call_rt("rt_member", 2) }
+      push_rax()
+      gen(n.expr)
+      push_rax()
+      call_rt(assign_op_fn(n.op), 2)
+    }
+    push_rax()
+    call_rt(setter, 3)
+    return null
+  }
+  refuse("assignment to {tg.type}")
+}
+
+// leaving try blocks early (break, skip, return): restore the handler chain, drop their records
+fn leave_tries(from) {
+  var i = len(tries) - 1
+  while i >= from {
+    e(x.load(x.RAX, x.RBP, tries[i]))
+    e(x.load(x.RAX, x.RAX, 16))
+    store_global(rt_global("rt_handler"))
+    i -= 1
+  }
+  if len(tries) > from {
+    // the records sit on the stack in order; rsp goes back to just above the outermost one left
+    e(x.load(x.RAX, x.RBP, tries[from]))
+    e(x.alu_imm(0, x.RAX, 24))
+    e(x.mov_rr(x.RSP, x.RAX))
+  }
+}
+
+fn gen_for(n) {
+  let saved = len(scope)
+  let top = fresh("fo")
+  let inc = fresh("fi")
+  let end = fresh("fe")
+  if n.iter.type == "Binary" and n.iter.op == ".." {
+    if n.b != null { refuse("two variables over a range") }
+    let cnt = hidden()
+    let lim = hidden()
+    gen(n.iter.l)
+    e(x.store(x.RBP, cnt, x.RAX))
+    gen(n.iter.r)
+    e(x.store(x.RBP, lim, x.RAX))
+    if not raw {
+      e(x.load(x.RAX, x.RBP, cnt))
+      push_rax()
+      e(x.load(x.RAX, x.RBP, lim))
+      push_rax()
+      call_rt("rt_range_check", 2)
+    }
+    let v = declare(n.a)
+    e({ label: top })
+    e(x.load(x.RAX, x.RBP, cnt))
+    if raw {
+      e(x.load(x.RCX, x.RBP, lim))
+      e(x.alu_rr(x.CMP, x.RAX, x.RCX))
+      e(x.jcc("ge"))
+      e({ rel32: end })
+    } else {
+      push_rax()
+      e(x.load(x.RAX, x.RBP, lim))
+      push_rax()
+      call_rt("rt_lt", 2)
+      e(x.alu_imm(7, x.RAX, 18))
+      e(x.jcc("ne"))
+      e({ rel32: end })
+      e(x.load(x.RAX, x.RBP, cnt))
+    }
+    init_local(v)
+    loops[len(loops)] = { brk: end, skp: inc, tries: len(tries) }
+    gen_body(n.body)
+    loops = slice(loops, 0, len(loops) - 1)
+    e({ label: inc })
+    e(x.load(x.RAX, x.RBP, cnt))
+    if raw {
+      e(x.alu_imm(0, x.RAX, 1))
+    } else {
+      push_rax()
+      call_rt("rt_range_next", 1)
+    }
+    e(x.store(x.RBP, cnt, x.RAX))
+    e(x.jmp())
+    e({ rel32: top })
+    e({ label: end })
+    pop_scope(saved)
+    return null
+  }
+  if raw { refuse("for over a collection in raw code") }
+  let coll = hidden()
+  let items = hidden()
+  let idx = hidden()
+  gen(n.iter)
+  e(x.store(x.RBP, coll, x.RAX))
+  push_rax()
+  call_rt("rt_iter", 1)
+  e(x.store(x.RBP, items, x.RAX))
+  e(x.mov_ri(x.RAX, 0))
+  e(x.store(x.RBP, idx, x.RAX))
+  let va = declare(n.a)
+  var vb = null
+  if n.b != null { vb = declare(n.b) }
+  e({ label: top })
+  e(x.load(x.RCX, x.RBP, items))
+  e(x.load(x.RCX, x.RCX, 8))
+  e(x.load(x.RAX, x.RBP, idx))
+  e(x.alu_rr(x.CMP, x.RAX, x.RCX))
+  e(x.jcc("ge"))
+  e({ rel32: end })
+  // rax = items[idx]
+  e(x.load(x.RCX, x.RBP, items))
+  e(x.load(x.RCX, x.RCX, 24))
+  e(x.shift_imm(x.SHL, x.RAX, 3))
+  e(x.alu_rr(x.ADD, x.RAX, x.RCX))
+  e(x.load(x.RAX, x.RAX, 0))
+  if vb == null {
+    init_local(va)
+  } else {
+    // first variable: the key (maps) or the index as a num (everything else); second: the value
+    push_rax()
+    e(x.load(x.RCX, x.RBP, coll))
+    e(x.push(x.RCX))
+    e(x.load(x.RCX, x.RBP, idx))
+    e(x.shift_imm(x.SHL, x.RCX, 3))
+    e(x.alu_imm(1, x.RCX, 1))
+    e(x.push(x.RCX))
+    e(x.load(x.RAX, x.RSP, 16))
+    push_rax()
+    call_rt("rt_iter_first", 3)
+    init_local(va)
+    e(x.pop(x.RAX))
+    e(x.load(x.RCX, x.RBP, coll))
+    e(x.push(x.RCX))
+    e(x.push(x.RCX))
+    push_rax()
+    call_rt("rt_iter_second", 3)
+    init_local(vb)
+  }
+  loops[len(loops)] = { brk: end, skp: inc, tries: len(tries) }
+  gen_body(n.body)
+  loops = slice(loops, 0, len(loops) - 1)
+  e({ label: inc })
+  e(x.load(x.RAX, x.RBP, idx))
+  e(x.alu_imm(0, x.RAX, 1))
+  e(x.store(x.RBP, idx, x.RAX))
+  e(x.jmp())
+  e({ rel32: top })
+  e({ label: end })
+  pop_scope(saved)
+  return null
+}
+
+fn gen_try(n) {
+  if raw { refuse("try in raw code") }
+  let handler = fresh("catch")
+  let done = fresh("tryend")
+  let rec = hidden()
+  // handler record on the stack: [handler address][rbp][previous handler]
+  load_global(rt_global("rt_handler"))
+  push_rax()
+  e(x.push(x.RBP))
+  lea_label(handler)
+  push_rax()
+  e(x.mov_rr(x.RAX, x.RSP))
+  e(x.store(x.RBP, rec, x.RAX))
+  store_global(rt_global("rt_handler"))
+  tries[len(tries)] = rec
+  gen_block(n.body)
+  tries = slice(tries, 0, len(tries) - 1)
+  // normal exit: unlink the record
+  e(x.load(x.RAX, x.RSP, 16))
+  store_global(rt_global("rt_handler"))
+  e(x.alu_imm(0, x.RSP, 24))
+  e(x.jmp())
+  e({ rel32: done })
+  // a failure lands here with rsp at the record and rbp restored; the runtime has already unlinked it
+  e({ label: handler })
+  e(x.alu_imm(0, x.RSP, 24))
+  let saved = len(scope)
+  if n.errName != null {
+    let v = declare(n.errName)
+    load_global(rt_global("rt_err"))
+    init_local(v)
+  }
+  emit_loc()
+  gen_block(n.handler)
+  pop_scope(saved)
+  e({ label: done })
+  return null
+}
+
+fn gen_stmt(n, top) {
+  let t = n.type
+  set_loc(n)
+  if t == "Let" {
+    gen(n.expr)
+    if top and not in_fn {
+      store_global(mod.globals[n.name])
+    } else {
+      init_local(declare(n.name))
+    }
+    return null
+  }
+  if t == "Assign" { return gen_assign(n) }
+  if t == "ExprStmt" {
+    gen(n.expr)
+    return null
+  }
+  if t == "If" {
+    let els = fresh("else")
+    let end = fresh("endif")
+    gen(n.cond)
+    test_truth("if")
+    e(x.jcc("eq"))
+    e({ rel32: els })
+    gen_block(n.then)
+    e(x.jmp())
+    e({ rel32: end })
+    e({ label: els })
+    if n.otherwise != null { gen_body(n.otherwise) }
+    e({ label: end })
+    return null
+  }
+  if t == "While" {
+    let wtop = fresh("wh")
+    let end = fresh("we")
+    e({ label: wtop })
+    gen(n.cond)
+    test_truth("while")
+    e(x.jcc("eq"))
+    e({ rel32: end })
+    loops[len(loops)] = { brk: end, skp: wtop, tries: len(tries) }
+    gen_block(n.body)
+    loops = slice(loops, 0, len(loops) - 1)
+    e(x.jmp())
+    e({ rel32: wtop })
+    e({ label: end })
+    return null
+  }
+  if t == "For" { return gen_for(n) }
+  if t == "Try" { return gen_try(n) }
+  if t == "Break" or t == "Skip" {
+    if len(loops) == 0 { raise("native: {t} outside a loop") }
+    let l = loops[len(loops) - 1]
+    leave_tries(l.tries)
+    e(x.jmp())
+    if t == "Break" { e({ rel32: l.brk }) } else { e({ rel32: l.skp }) }
+    return null
+  }
+  if t == "Return" {
+    if n.expr == null {
+      if raw { load_imm(0i) } else { load_imm(2i) }
+    } else {
+      gen(n.expr)
+    }
+    if len(tries) > 0 {
+      push_rax()
+      e(x.load(x.RAX, x.RBP, tries[0]))
+      e(x.load(x.RAX, x.RAX, 16))
+      store_global(rt_global("rt_handler"))
+      e(x.pop(x.RAX))
+    }
+    e(x.jmp())
+    e({ rel32: ret_label })
+    return null
+  }
+  if t == "Block" {
+    gen_block(n)
+    return null
+  }
+  if t == "FnDecl" {
+    if not top { refuse("a function declared inside a block") }
+    return null
+  }
+  if t == "Use" {
+    if not top { refuse("use inside a block") }
+    return null
+  }
+  refuse("statement {t}")
+}
+
+// ── functions and modules ────────────────────────────────────────────────────
+fn begin_frame(label, nslots) {
+  e({ label: label })
+  e(x.push(x.RBP))
+  e(x.mov_rbp_rsp())
+  e(x.alu_imm(5, x.RSP, 8 * nslots))
+}
+fn end_frame() {
+  if raw { load_imm(0i) } else { load_imm(2i) }
+  e({ label: ret_label })
+  e(x.mov_rsp_rbp())
+  e(x.pop(x.RBP))
+  e(x.ret())
+}
+fn reset_frame() {
+  scope = []
+  slot = 0
+  loops = []
+  tries = []
+  cur_loc = ""
+  loc_slot = 0
+}
+// parameters: in place, or copied into cells when a lambda captures them
+fn bind_params(params, first_off) {
+  let np = len(params)
+  var i = 0
+  for p in params {
+    let off = first_off + 8 * (np - 1 - i)
+    if has(boxed, p.name) {
+      let v = declare(p.name)
+      e(x.load(x.RAX, x.RBP, off))
+      init_local(v)
+    } else {
+      scope[len(scope)] = { name: p.name, kind: "slot", off: off, boxed: false }
+    }
+    i += 1
+  }
+}
+fn gen_fn(f) {
+  reset_frame()
+  in_fn = true
+  ret_label = fresh("ret")
+  if raw { boxed = {} } else { boxed = captured_in(f.body) }
+  begin_frame(mod.fns[f.name].label, count_slots(f.body) + len(f.params) + 1)
+  if mod.no_loc {
+    loc_slot = hidden()
+    load_global(rt_global("rt_loc"))
+    e(x.store(x.RBP, loc_slot, x.RAX))
+  }
+  if raw { bind_params(f.params, 16) } else { bind_params(f.params, 24) }
+  gen_block(f.body)
+  end_frame()
+  in_fn = false
+}
+fn gen_lambda_body(p) {
+  mod = p.mod
+  raw = false
+  reset_frame()
+  in_fn = true
+  ret_label = fresh("ret")
+  boxed = captured_in(p.node.body)
+  var i = 0
+  for name in p.env {
+    scope[len(scope)] = { name: name, kind: "env", idx: i }
+    i += 1
+  }
+  begin_frame(p.label, count_slots(p.node.body) + len(p.node.params))
+  bind_params(p.node.params, 24)
+  gen_block(p.node.body)
+  end_frame()
+  in_fn = false
+}
+fn gen_module_init(m) {
+  reset_frame()
+  in_fn = false
+  ret_label = fresh("ret")
+  if raw { boxed = {} } else { boxed = captured_in(m.ast.items) }
+  begin_frame("init:" + m.id, count_slots(m.ast.items))
+  for it in m.ast.items { gen_stmt(it, true) }
+  if not m.raw {
+    for name, l in m.globals {
+      load_global(l)
+      store_global(export_label(m.id, name))
+    }
+  }
+  end_frame()
+}
+// names a module declares at its top level
+fn declare_module(m) {
+  var globals = {}
+  var fns = {}
+  for it in m.ast.items {
+    if it.type == "Let" {
+      let l = global_label(m.id, it.name)
+      globals[it.name] = l
+      d({ align: 8 })
+      d({ label: l })
+      if m.raw { d(le64i(0i)) } else { d(le64i(2i)) }
+      if not m.raw {
+        d({ label: export_label(m.id, it.name) })
+        d(le64i(2i))
+      }
+    }
+    if it.type == "FnDecl" { fns[it.name] = { label: fn_label(m.id, it.name), nparams: len(it.params) } }
+  }
+  var uses = {}
+  if has(m, "uses") and m.uses != null { uses = m.uses }
+  var file = m.id
+  if has(m.ast, "file") and m.ast.file != null { file = m.ast.file }
+  mods[m.id] = { id: m.id, raw: m.raw, globals: globals, fns: fns, uses: uses, ast: m.ast, file: file, no_loc: m.id == "prelude" }
+}
+
+fn compile_bundle(bundle) {
+  code = []
+  data = []
+  lbl = 0
+  strs = {}
+  locs = {}
+  mods = {}
+  pending = []
+  thunks = {}
+  for m in bundle.modules { declare_module(m) }
+  if not has(mods, "rt") { raise("native: the bundle has no runtime module (rt)") }
+  d({ align: 8 })
+  d({ label: "entry_sp" })
+  d(le64i(0i))
+  // entry: keep the stack pointer for args(), set up the runtime, run every module's top level in order, exit 0
+  e({ label: "_start" })
+  e(x.mov_rr(x.RAX, x.RSP))
+  store_global("entry_sp")
+  for m in bundle.modules {
+    e(x.call())
+    e({ rel32: "init:" + m.id })
+    if m.id == "rt" {
+      e(x.call())
+      e({ rel32: rt_label("rt_init") })
+    }
+  }
+  e(x.mov_ri(x.RDI, 0))
+  e(x.mov_ri(x.RAX, 60))
+  e(x.syscall())
+  for m in bundle.modules {
+    mod = mods[m.id]
+    raw = m.raw
+    gen_module_init(mod)
+    for it in m.ast.items {
+      if it.type == "FnDecl" { gen_fn(it) }
+    }
+  }
+  // lambdas, including lambdas inside lambdas (compiling one may add more)
+  var k = 0
+  while k < len(pending) {
+    gen_lambda_body(pending[k])
+    k += 1
+  }
+  gen_thunks()
+  var items = code
+  for it in data { items[len(items)] = it }
+  return elf.elf(items, "_start")
+}

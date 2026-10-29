@@ -10,12 +10,11 @@ const path   = require('path');
 const fs     = require('fs');
 const http   = require('http');
 const { Bus, Event, Gate } = require('./siso');
-const ollama = require('../../ollama/ollama-runtime');
+const ollama = require('./llm/ollama');   // §2026-10-28 emerge's own client (was ../../ollama/ollama-runtime, Nexus tree)
 
 // ── Locate kernel & Load Spec ──────────────────────────────────────────────
 const kernelPath = [
-  path.join(__dirname, 'emerge-kernel.js'),
-  path.join(__dirname, '..', '..', 'emerge-kernel.js'),
+  path.join(__dirname, 'emerge-kernel.js'),            // emerge's own copy only — never a file above emerge/
 ].find(p => fs.existsSync(p));
 
 if (!kernelPath) { console.error('[ide] emerge-kernel.js not found'); process.exit(1); }
@@ -24,7 +23,6 @@ const kernel = require(kernelPath);
 // ── Locate codegen ────────────────────────────────────────────────────────
 const codegenPath = [
   path.join(__dirname, 'emerge-codegen-v2.js'),
-  path.join(__dirname, '..', '..', 'emerge-codegen-v2.js'),
 ].find(p => fs.existsSync(p));
 const codegen = codegenPath ? (() => {
   try { return require(codegenPath); }

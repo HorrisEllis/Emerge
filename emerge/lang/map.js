@@ -156,6 +156,7 @@ function generate() {
   w(`- **runtime signals:** rejected → \`"${P.signals.rejected}"\` · gap opened → \`"${P.signals.gap_opened}"\` · promoted → \`"${P.signals.promoted}"\``);
   w(`- **truth:** ${P.truth.strict ? 'strict — conditions need a real bool' : 'truthy — null, false, 0, "", [] and {} are false'}`);
   w(`- **dispatch:** unrouted signals are \`${P.dispatch.unrouted}\`; at most ${P.dispatch.max_deliveries} deliveries per drain`);
+  w(`- **ledger:** a checkpoint entry every ${P.ledger.checkpoint_every} entries and at clean shutdown`);
   w(`- **transitions:** a refused transition ${P.transitions.discard_emits_on_refusal ? 'discards' : 'still sends'} its emits`);
   w(`- **components:** boundary of 1..${P.components.boundary_max} invariants; hooks export as \`${P.components.hook_type}\``);
   w(`- **diagnostics:** ${Object.entries(P.diagnostics).map(([k, v]) => `${k} = ${v}`).join(' · ')}`);

@@ -3,10 +3,11 @@
 // component_id: emerge.core.history
 // Map: docs/2026-10-02-emerge-field-memory-build-phasemap.spec (EM1)
 // Each entry carries the hash of the one before (like lib/nexstore/log.js). Logical ticks only — no wall time — so two
-// runs with one seed write byte-identical histories. Hashing reused from intelligence/rfr2/identity.
+// runs with one seed write byte-identical histories. Hashing is emerge's own (core/identity.js: ECF + full SHA-256);
+// §2026-10-28 it was intelligence/rfr2's 64-bit hash, from the Nexus tree above emerge/.
 
-const { canonicalize, hash64 } = require('../../../intelligence/rfr2/identity');
-const { createClock } = require('../../../intelligence/rfr2/time');
+const { canonicalize, hash: hash64 } = require('./identity');
+const { createClock } = require('./clock');
 
 function createHistory() {
   const entries = [];

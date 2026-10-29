@@ -530,7 +530,13 @@ function writeOutput(inputPath, data) {
 
 function watchIO() {
   console.log(`[kernel] watching ${IO}`);
-  require('../safe-watch.js').watch(IO, (event, filename) => {
+  // §2026-10-28 — emerge's own watcher (was ../safe-watch.js, from the Nexus tree above emerge/): fs.watch, with errors
+  // reported instead of crashing the kernel.
+  const safeWatch = (dir, cb) => {
+    try { const w = fs.watch(dir, cb); w.on('error', e => console.error(`[kernel] watch error on ${dir}: ${e.message}`)); return w; }
+    catch (e) { console.error(`[kernel] cannot watch ${dir}: ${e.message}`); return null; }
+  };
+  safeWatch(IO, (event, filename) => {
     if (!filename) return;
     const fp  = path.join(IO, filename);
     const ext = path.extname(filename).toLowerCase();
