@@ -1,0 +1,21 @@
+// Level 4 — everything that happens is written down, and what is missing is written down too.
+compartment Tank {
+  id = "tank.water"
+  intent = "hold water, never more than 100"
+  state { level: 10 }
+  constraint not_over hard { state.level <= 100 }
+  on "fill" (e) { state.level += e.amount }
+}
+
+record "decision" { chose: "start small" }                    // write a fact into the ledger
+gap "we do not know the tank's real size" pressure 0.4 type evidential   // write down what is missing
+
+let imagined = whatif {          // try something in a copy of the world, then throw the copy away
+  emit "fill" { amount: 50 }
+  Tank.state.level
+}
+print("if we filled 50, the level would be", imagined)
+print("but really it is still", Tank.state.level)
+
+print("open gaps:", len(gaps()))
+print("is the history untouched?", ledger_verify())

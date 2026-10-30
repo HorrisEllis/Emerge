@@ -1,0 +1,20 @@
+// Level 2 — a thing that remembers, and a rule it can never break.
+compartment Jar {
+  id = "jar.cookies"
+  intent = "hold cookies, and never have fewer than zero"
+  state { cookies: 3 }
+
+  constraint never_negative hard { state.cookies >= 0 }
+
+  on "take" (e) {
+    state.cookies -= e.count
+    emit "taken" { left: state.cookies }
+  }
+}
+
+on "taken" (e) { print("cookies left:", e.left) }
+on "rejected" (r) { print("refused by rule:", r.constraint) }
+
+emit "take" { count: 2 }     // allowed: 3 - 2 = 1
+emit "take" { count: 5 }     // would make -4: the rule refuses it, nothing changes
+print("the jar holds", Jar.state.cookies)

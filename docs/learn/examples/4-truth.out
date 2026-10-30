@@ -1,0 +1,7 @@
+if we filled 50, the level would be 60
+but really it is still 10
+open gaps: 1
+is the history untouched? true
+--- stderr
+[emerge] 1 unrouted signal(s) logged to the ledger: gap.opened
+exit 0
