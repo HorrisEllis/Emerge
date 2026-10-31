@@ -21,7 +21,13 @@ const fs = require('fs'), os = require('os'), path = require('path'), http = req
 const { spawnSync } = require('child_process');
 
 const ROOT = __dirname;
-const EG = process.env.EG_PATH || path.join(ROOT, '..', 'emerge', 'lang', 'eg.js');
+// eg.js: EG_PATH, else bench/ beside emerge/ (the repo layout), else bench/ copied inside emerge/. Missing → stop now,
+// before any model is called (a missing checker once read as three trials of model failures).
+const EG = process.env.EG_PATH || [path.join(ROOT, '..', 'emerge', 'lang', 'eg.js'), path.join(ROOT, '..', 'lang', 'eg.js')].find(f => fs.existsSync(f));
+if (!EG || !fs.existsSync(EG)) {
+  console.error('Cannot find emerge/lang/eg.js. Run from the repo root (bench/ beside emerge/), or set EG_PATH to the full path of eg.js.');
+  process.exit(1);
+}
 const EMERGE = path.join(path.dirname(EG), '..');
 const est = s => Math.ceil(s.length / 4);
 function arg(name, def) { const i = process.argv.indexOf('--' + name); return i > -1 ? process.argv[i + 1] : def; }
@@ -328,6 +334,9 @@ async function main() {
     const models = mode === 'run' ? [arg('model')] : (arg('models') || '').split(',').filter(Boolean);
     if (!models.length || !models[0]) { console.error(mode === 'run' ? 'need --model <name>' : 'need --models a,b,c'); process.exit(1); }
     const suite = loadSuite(opts.suite); const chat = client(opts); const all = [];
+    // preflight: the checker must pass a reference unit before any model is called
+    const u0 = suite.spec.units[0]; const pre = runEg(suite.ref(u0.id) + '\n\n' + u0.tests);
+    if (!pre.ok) { console.error('Preflight failed: the reference ' + u0.id + ' does not pass, so no model answer could be judged.\n' + pre.output); process.exit(1); }
     for (const m of models) all.push(await runModel(chat, m, suite, opts));
     return summarize(all, opts, opts.suite);
   }

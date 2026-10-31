@@ -7,7 +7,13 @@ const fs = require('fs'), os = require('os'), path = require('path'), http = req
 const { spawnSync } = require('child_process');
 
 const ROOT = __dirname;
-const EG = process.env.EG_PATH || path.join(ROOT, '..', 'emerge', 'lang', 'eg.js');
+// eg.js: EG_PATH, else bench/ beside emerge/ (the repo layout), else bench/ copied inside emerge/. Missing → stop now,
+// before any model is called (a missing checker once read as three trials of model failures).
+const EG = process.env.EG_PATH || [path.join(ROOT, '..', 'emerge', 'lang', 'eg.js'), path.join(ROOT, '..', 'lang', 'eg.js')].find(f => fs.existsSync(f));
+if (!EG || !fs.existsSync(EG)) {
+  console.error('Cannot find emerge/lang/eg.js. Run from the repo root (bench/ beside emerge/), or set EG_PATH to the full path of eg.js.');
+  process.exit(1);
+}
 const LANG_DIR = path.dirname(EG);
 const TASKS = fs.readdirSync(path.join(ROOT, 'tasks')).filter(d => fs.statSync(path.join(ROOT, 'tasks', d)).isDirectory()).sort();
 const est = s => Math.ceil(s.length / 4);               // rough: 4 characters per token
