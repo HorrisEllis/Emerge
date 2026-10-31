@@ -16,6 +16,21 @@ Node was used once, as stage 0, to make that binary. `lang/test/selfhost.test.js
 exactly the committed binary and that it reproduces itself. What still runs on Node, and the order it is being moved to
 Emerge, is the build plan in `cie-eg.spec` (`native_lang`, `native_system`, `native_tools`, `native_windows`).
 
+## Code in your own words
+
+Emerge is meant for its author: coding made easy in his own language, with AI only additive and on the way out
+(`cie-eg.spec`, section 0). `eg say` reads a sentence in his words and writes the Emerge it means. No model is involved:
+
+```
+eg say "a compartment called Inbox with messages, never negative. when a message comes in add 1 to messages. record it, test it"
+eg teach "bump" as add          # a word it did not know, taught once, never asked again
+eg words                        # the vocabulary, each word with the quote of his it came from
+```
+
+Every word it understood is shown with his own dated quote. Every word it did not understand is a gap, named with the
+command that teaches it; nothing is guessed, and nothing is written until the result checks clean.
+Spec: `emerge/spec/say.spec`.
+
 ## Build any project from its spec
 
 ```

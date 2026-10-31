@@ -1,0 +1,136 @@
+// lang/say/words.eg — his vocabulary, as Emerge data. Literal only (like core/primitives.eg): no code runs here.
+// Each word: the forms he uses (his spellings), what it means, what it does in Emerge (an act lang/say/say.eg knows),
+// and the evidence: his own words, their date, and where they are recorded (Nexus docs/his-words). A word enters only
+// with his quote behind it. A phrase he teaches later (eg teach) is in taught.eg. Spec: emerge/spec/say.spec.
+
+let words = [
+  {
+    forms: ["compartment", "compartments", "compartemtns"],
+    means: "a piece of state held apart, guarded by its own rules",
+    does: "kind:compartment",
+    from: [
+      { said: "im saying to add that to cos. the conditions. like the intent of compartment is the end state.", date: "2026-10-07", where: "Nexus docs/his-words Q1028 · README.md:16594" },
+      { said: "we need to make compartments in idearium for nexus, and add support for nested compartments, like increments of zoom.", date: "2026-09-22", where: "Nexus docs/his-words Q0644 · docs/nexus-repo-compartment-and-rich-dispatch-phasemap.spec:7" }
+    ]
+  },
+  {
+    forms: ["component", "components"],
+    means: "a part with typed ways in and out, connected by wires",
+    does: "kind:component",
+    from: [
+      { said: "Cli first. API. Components, seams, hooks, wires and consumers.", date: "2026-07-24", where: "Nexus docs/his-words Q0011 · docs/nexus-sentinel.spec:429" }
+    ]
+  },
+  {
+    forms: ["sovereign", "soveriegn", "sovereign system", "system"],
+    means: "a system that owns itself: its own state, its own door, nothing reaching in",
+    does: "kind:sovereign",
+    from: [
+      { said: "relevant individual node schemas per system. Each system is sovereign remember that.", date: "2026-09-12", where: "Nexus docs/his-words Q0449 · Emerge/emerge/schemas/index.js:4" },
+      { said: "full move. each system needs to be sovereign. if cortex going down breaks something, it needs to be moved.", date: "2026-09-19", where: "Nexus docs/his-words Q0545 · cortex/boot.js:663" }
+    ]
+  },
+  {
+    forms: ["test", "tests", "test it", "test first", "prove it", "prove", "verify it"],
+    means: "proven by a test before it is trusted",
+    does: "test",
+    from: [
+      { said: "needs to build a test first then use that to shape expectation and conditions.", date: "2026-10-17", where: "Nexus docs/his-words Q1454 · README.md:16276" }
+    ]
+  },
+  {
+    forms: ["program", "script"],
+    means: "a program to run",
+    does: "kind:program",
+    from: [
+      { said: "memory storage, and a observer for learning? / this is for my to code by hand when I need to. so i can inspect it and build it.", date: "2026-10-30", where: "Nexus docs/his-words Q1893 · versionium/changelogs/CHANGELOG-0.60.307.md:4" }
+    ]
+  },
+  {
+    forms: ["called", "named", "name it"],
+    means: "what it is called (the next word is the name)",
+    does: "name",
+    from: [
+      { said: "like maybe a cos template called torture chamber, or something. like with the branching and parralel.", date: "undated", where: "Nexus docs/his-words Q2215 · docs/SPEC-REGISTRY.spec:1708" }
+    ]
+  },
+  {
+    forms: ["end state", "end-state", "intent", "intent is", "so that", "meant to", "its for", "it is for"],
+    means: "what it is for: its end state",
+    does: "intent",
+    from: [
+      { said: "im saying to add that to cos. the conditions. like the intent of compartment is the end state.", date: "2026-10-07", where: "Nexus docs/his-words Q1028 · README.md:16594" }
+    ]
+  },
+  {
+    forms: ["with", "holding", "holds", "tracks", "tracking", "keeps", "keeping", "state"],
+    means: "what it holds (the words after it are its state)",
+    does: "fields",
+    from: [
+      { said: "huge idea, what about freezing the state of the tab using the state VM like system/rewind system?", date: "2026-08-18", where: "Nexus docs/his-words Q0118 · clear-glass/src/main/index.js:2486" },
+      { said: "loom depends on the .git i want versionium to hold the history for each repo.", date: "2026-09-26", where: "Nexus docs/his-words Q0701 · versionium/spec/versionium.spec:376" }
+    ]
+  },
+  {
+    forms: ["never negative", "non negative", "non-negative", "never below zero", "cant go negative", "never goes negative"],
+    means: "a gate: the value never drops below zero",
+    does: "gate:nonneg",
+    from: [
+      { said: "need to use nexus as persitent storage, each interaction gated, that way each gate can be a different agent, using the ledgers or previous conversations, or anything as a way to use nexus for consistencey across domains. a tool to request lines from a file to copy to the worksurface or a new file to edit so it can be tiny amounts of code. like i want to make nexus hold as much as possible, as much data, and checkpoints that can save our progress the better. need to be able to change the intent map and routing. like all data in the repo needs to persist. mapping, gathering context from the dependancies look at the phases from today, get this working with new context gathering methods, and intent routing, all the phases from today and yesterday that will idearium working. profiles in clearlgas that can link to hats. multiaccunt setup in clearglass, using porofiles?", date: "2026-07-11", where: "Nexus docs/his-words Q0008 · idearium/api/index.js:3708" }
+    ]
+  },
+  {
+    forms: ["at most", "no more than", "max", "maximum", "capped at"],
+    means: "a gate: the value never goes above the number",
+    does: "gate:max",
+    from: [
+      { said: "need to use nexus as persitent storage, each interaction gated, that way each gate can be a different agent, using the ledgers or previous conversations, or anything as a way to use nexus for consistencey across domains. a tool to request lines from a file to copy to the worksurface or a new file to edit so it can be tiny amounts of code. like i want to make nexus hold as much as possible, as much data, and checkpoints that can save our progress the better. need to be able to change the intent map and routing. like all data in the repo needs to persist. mapping, gathering context from the dependancies look at the phases from today, get this working with new context gathering methods, and intent routing, all the phases from today and yesterday that will idearium working. profiles in clearlgas that can link to hats. multiaccunt setup in clearglass, using porofiles?", date: "2026-07-11", where: "Nexus docs/his-words Q0008 · idearium/api/index.js:3708" }
+    ]
+  },
+  {
+    forms: ["when", "on", "whenever", "every time"],
+    means: "an event: what happens when it comes in",
+    does: "event",
+    from: [
+      { said: "listener uuid, logs to cortex listeners index... we can use elements as callable ids... high leverage... tool for setting up a new agent to the agent mesh.", date: "2026-08-23", where: "Nexus docs/his-words Q0174 · clear-glass/src/ipc/bridge.js:3054" }
+    ]
+  },
+  {
+    forms: ["add", "adds", "increase", "increases", "count", "counts", "plus", "increment", "grow", "grows"],
+    means: "adds to a value (by 1, or by the number said)",
+    does: "add",
+    from: [
+      { said: "emerge is meant to cut down 90% of tokens, warp some and speed it up and compound it, if it doesn't compound yet add that.", date: "2026-07-09", where: "Nexus docs/his-words Q0003 · docs/warp-devkit-addendum-v1.4.1.spec:13" },
+      { said: "we need to make compartments in idearium for nexus, and add support for nested compartments, like increments of zoom.", date: "2026-09-22", where: "Nexus docs/his-words Q0644 · docs/nexus-repo-compartment-and-rich-dispatch-phasemap.spec:7" }
+    ]
+  },
+  {
+    forms: ["remove", "removes", "decrease", "decreases", "minus", "subtract", "drop", "drops"],
+    means: "takes from a value (by 1, or by the number said)",
+    does: "sub",
+    from: [
+      { said: "emerge is meant to cut down 90% of tokens, warp some and speed it up and compound it, if it doesn't compound yet add that.", date: "2026-07-09", where: "Nexus docs/his-words Q0003 · docs/warp-devkit-addendum-v1.4.1.spec:13" }
+    ]
+  },
+  {
+    forms: ["door", "doorway", "one door", "ingest", "input", "one way in"],
+    means: "one way in and one way out, nothing else reaches it",
+    does: "door",
+    from: [
+      { said: "both, one per system using the server.js as a ingest, from the input folder, with the intent as a flag after the command. / and then orchastrator/cos using raid as the routing, for systems, load balancing, and agents", date: "2026-10-30", where: "Nexus docs/his-words Q1870 · lib/version.js:42" },
+      { said: "the registry … is its self the doorway, and the rest is isolated modular, interacting through the interaction contract/registry … routes, cli, nodes and dir, everything loom and the component registry have … the nodes based data structure exactly like guardian", date: "2026-10-01", where: "Nexus docs/his-words Q0816 · idearium/repo/architecture.js:19" }
+    ]
+  },
+  {
+    forms: ["record", "record it", "ledger", "log", "log it", "history", "living record"],
+    means: "every change written to the ledger",
+    does: "record",
+    from: [
+      { said: "It's supposed to add addendums as a living record as it moves through the system.", date: "2026-07-24", where: "Nexus docs/his-words Q0014 · lib/contract-queue.js:83" },
+      { said: "make sure each failure mode is logged to cortex.", date: "2026-08-12", where: "Nexus docs/his-words Q0061 · copilot/lifeline.js:192" }
+    ]
+  }
+]
+
+// his words that carry no instruction on their own (from the stripped index: docs/2026-10-31-his-words-stripped.md)
+let filler = ["a", "all", "also", "am", "an", "and", "any", "are", "arrive", "arrived", "arrives", "as", "at", "be", "been", "but", "by", "can", "come", "comes", "could", "did", "do", "does", "each", "every", "for", "from", "get", "gets", "got", "had", "happens", "has", "have", "here", "how", "i", "i'm", "im", "in", "into", "is", "it", "it's", "its", "just", "let", "let's", "lets", "like", "made", "make", "makes", "maybe", "me", "my", "need", "needs", "now", "of", "ok", "okay", "one", "or", "please", "received", "sent", "should", "so", "some", "stuff", "that", "the", "then", "there", "these", "thing", "things", "this", "those", "to", "want", "wants", "was", "we", "were", "what", "which", "who", "will", "would", "yeah", "yes", "you", "your"]

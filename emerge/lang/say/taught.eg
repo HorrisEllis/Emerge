@@ -1,0 +1,2 @@
+// lang/say/taught.eg — phrases he taught (eg teach "<phrase>" as <word>). Written by eg teach; literal data only.
+let taught = []

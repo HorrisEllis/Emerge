@@ -1,0 +1,401 @@
+// lang/say/say.eg — his words in, Emerge out. No model. Spec: emerge/spec/say.spec (MOD-SAY).
+// James, 2026-10-31: "To make coding easy for me using my own language. Ai is additive. Also it's working towards removing
+// the dependency of ai." · "im trying to remove as much friction from me and the code as possibel"
+// A sentence is read against his vocabulary (words.eg, taught.eg), longest phrase first. Every word is a known form, a
+// name, a number, filler, or a gap. The source is written only from what was understood; a gap is named, never guessed.
+//   eg run say.eg say "<sentence>"           → one line of JSON: { ok, name, source, report }
+//   eg run say.eg teach "<phrase>" <word>    → the phrase added to taught.eg as a form of <word>
+//   eg run say.eg words                      → his vocabulary, each word with his quote
+use "./words.eg" as lex
+use "./taught.eg" as tg
+
+fn ob() = "\{"
+fn cb() = "\}"
+
+// ── the vocabulary ───────────────────────────────────────────────────────────
+fn entry_of(form) {
+  for i, e in lex.words {
+    if e.forms contains form { return i }
+  }
+  for t in tg.taught {
+    if t.form == form { return entry_of(t.word) }
+  }
+  return -1
+}
+
+// every form with its entry, longest first (by words, then letters), so "never negative" wins over "never"
+fn all_forms() {
+  var out = []
+  for i, e in lex.words {
+    for f in e.forms { out = push(out, { form: f, idx: i, n: len(split(f, " ")), taught: false }) }
+  }
+  for t in tg.taught {
+    let i = entry_of(t.word)
+    if i >= 0 { out = push(out, { form: t.form, idx: i, n: len(split(t.form, " ")), taught: true }) }
+  }
+  return sort_by(out, fn(x) = x.n * 1000 + len(x.form), "desc")
+}
+
+// ── words ────────────────────────────────────────────────────────────────────
+fn bare(w) {
+  var out = []
+  for c in split(lower(w), "") {
+    if (c >= "a" and c <= "z") or (c >= "0" and c <= "9") or c == "-" or c == "_" { out = push(out, c) }
+  }
+  return join(out, "")
+}
+fn is_number(w) = w matches "^[0-9]+$"
+fn ident(w) {
+  var out = []
+  for c in split(lower(w), "") {
+    if (c >= "a" and c <= "z") or (c >= "0" and c <= "9") { out = push(out, c) } else { out = push(out, "_") }
+  }
+  var s = join(out, "")
+  if s == "" or (slice(s, 0, 1) >= "0" and slice(s, 0, 1) <= "9") { s = "v_" + s }
+  return s
+}
+fn title(w) {
+  let s = ident(w)
+  return upper(slice(s, 0, 1)) + slice(s, 1)
+}
+
+// a clause as tokens: { raw (as he wrote it), w (bare, lower case) }
+fn tokens(clause) {
+  var out = []
+  for raw in split(trim(clause), " ") {
+    let w = bare(raw)
+    if w != "" { out = push(out, { raw: trim(raw), w: w }) }
+  }
+  return out
+}
+fn clauses(sentence) {
+  var out = []
+  var cur = []
+  for c in split(sentence, "") {
+    if c == "." or c == ";" or c == "," or c == "\n" {
+      out = push(out, join(cur, ""))
+      cur = []
+    } else {
+      cur = push(cur, c)
+    }
+  }
+  out = push(out, join(cur, ""))
+  return filter(out, fn(c) = trim(c) != "")
+}
+
+// the longest form that starts at token i, or null
+fn match_at(toks, i, forms) {
+  for f in forms {
+    let fw = split(f.form, " ")
+    if i + len(fw) <= len(toks) {
+      var ok = true
+      for k, w in fw {
+        if toks[i + k].w != w { ok = false }
+      }
+      if ok { return f }
+    }
+  }
+  return null
+}
+
+// ── understanding ────────────────────────────────────────────────────────────
+fn understand(sentence) {
+  let forms = all_forms()
+  var m = { kind: null, name: null, intent: null, fields: [], gates: [], events: [], door: false, record: false, test: false, used: [], gaps: [] }
+  for clause in clauses(sentence) {
+    let toks = tokens(clause)
+    var mode = ""
+    var focus = null
+    var event = []
+    var i = 0
+    while i < len(toks) {
+      let f = match_at(toks, i, forms)
+      if f != null {
+        let e = lex.words[f.idx]
+        let act = e.does
+        m.used = push(m.used, { form: f.form, idx: f.idx, taught: f.taught })
+        i += f.n
+        if act starts_with "kind:" {
+          var k = slice(act, 5)
+          if k == "sovereign" {
+            k = "component"
+            m.door = true
+          }
+          if m.kind == null { m.kind = k }
+          mode = ""
+        } else if act == "name" {
+          if i < len(toks) {
+            m.name = title(toks[i].raw)
+            i += 1
+          } else {
+            m.gaps = push(m.gaps, { what: "a name", say: "called <Name>" })
+          }
+        } else if act == "intent" {
+          var rest = []
+          while i < len(toks) {
+            if not (len(rest) == 0 and (toks[i].w == "is" or toks[i].w == "to")) { rest = push(rest, toks[i].raw) }
+            i += 1
+          }
+          if len(rest) > 0 { m.intent = join(rest, " ") }
+        } else if act == "fields" {
+          mode = "fields"
+        } else if act == "gate:nonneg" {
+          m.gates = push(m.gates, { kind: "nonneg", field: focus, n: 0 })
+        } else if act == "gate:max" {
+          var n = null
+          if i < len(toks) and is_number(toks[i].w) {
+            n = num(toks[i].w)
+            i += 1
+          }
+          if n == null {
+            m.gaps = push(m.gaps, { what: "the number for at most", say: "at most <number>" })
+          } else {
+            if focus == null and i < len(toks) and not (lex.filler contains toks[i].w) and match_at(toks, i, forms) == null {
+              focus = ident(toks[i].w)
+              if not (m.fields contains focus) { m.fields = push(m.fields, focus) }
+              i += 1
+            }
+            m.gates = push(m.gates, { kind: "max", field: focus, n: n })
+          }
+        } else if act == "event" {
+          mode = "event"
+          event = []
+        } else if act == "add" or act == "sub" {
+          var by = 1
+          var field = null
+          while i < len(toks) and field == null {
+            let w = toks[i].w
+            if is_number(w) {
+              by = num(w)
+            } else if not (lex.filler contains w) and w != "by" and w != "from" and match_at(toks, i, forms) == null {
+              field = ident(w)
+            } else if match_at(toks, i, forms) != null {
+              break
+            }
+            i += 1
+          }
+          if field == null { field = focus }
+          if field == null {
+            m.gaps = push(m.gaps, { what: "what to {act} to", say: "{act} <field>" })
+          } else {
+            if not (m.fields contains field) { m.fields = push(m.fields, field) }
+            focus = field
+            var name = "change"
+            if len(event) > 0 { name = join(event, "_") }
+            var delta = by
+            if act == "sub" { delta = 0 - by }
+            m.events = push(m.events, { name: name, field: field, delta: delta })
+          }
+          mode = ""
+        } else if act == "door" {
+          m.door = true
+        } else if act == "record" {
+          m.record = true
+        } else if act == "test" {
+          m.test = true
+        }
+      } else {
+        let t = toks[i]
+        if lex.filler contains t.w {
+          // carries no instruction
+        } else if mode == "fields" and not is_number(t.w) {
+          let fd = ident(t.w)
+          if not (m.fields contains fd) { m.fields = push(m.fields, fd) }
+          focus = fd
+        } else if mode == "event" {
+          event = push(event, ident(t.w))
+        } else if m.fields contains ident(t.w) {
+          focus = ident(t.w)
+        } else {
+          m.gaps = push(m.gaps, { what: "\"{t.raw}\" is not in your words yet", say: "eg teach \"{t.w}\" as <word>", word: t.w })
+        }
+        i += 1
+      }
+    }
+  }
+  if m.kind == null { m.gaps = push(m.gaps, { what: "what it is", say: "a compartment, component, sovereign system or program" }) }
+  if m.name == null { m.gaps = push(m.gaps, { what: "what it is called", say: "called <Name>" }) }
+  if m.kind == "compartment" and len(m.fields) == 0 { m.gaps = push(m.gaps, { what: "what it holds", say: "with <field>" }) }
+  if m.kind == "component" and not m.door and len(m.events) == 0 { m.gaps = push(m.gaps, { what: "how it is reached", say: "with a door, or when <event> add <field>" }) }
+  return m
+}
+
+// ── source ───────────────────────────────────────────────────────────────────
+fn q(s) = "\"" + replace(replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), ob(), "\\" + ob()), cb(), "\\" + cb()) + "\""
+fn state_line(m) {
+  var parts = []
+  for f in m.fields { parts = push(parts, "{f}: 0") }
+  return "state " + ob() + " " + join(parts, ", ") + " " + cb()
+}
+fn gate_lines(m, word) {
+  var out = []
+  for g in m.gates {
+    var targets = m.fields
+    if g.field != null { targets = [g.field] }
+    for f in targets {
+      if g.kind == "nonneg" { out = push(out, "  {word} {f}_never_negative " + ob() + " state.{f} >= 0 " + cb()) }
+      if g.kind == "max" { out = push(out, "  {word} {f}_at_most_{g.n} " + ob() + " state.{f} <= {g.n} " + cb()) }
+    }
+  }
+  return unique(out)
+}
+fn snapshot(m) {
+  var parts = []
+  for f in m.fields { parts = push(parts, "{f}: state.{f}") }
+  return ob() + " " + join(parts, ", ") + " " + cb()
+}
+fn change(f, d) {
+  if d >= 0 { return "state.{f} += {d}" }
+  return "state.{f} -= {0 - d}"
+}
+
+fn source(m) {
+  let n = m.name
+  let low = lower(n)
+  var L = ["// {low}.eg — written by eg say from his words. Run: eg run {low}.eg"]
+  if m.kind == "program" {
+    if m.intent != null { L = push(L, "// end state: {m.intent}") }
+    L = push(L, "let name = {q(n)}")
+    L = push(L, "print(\"hello from\", name)")
+    return join(L, "\n") + "\n"
+  }
+  if m.kind == "compartment" {
+    L = push(L, "compartment {n} " + ob())
+    L = push(L, "  id = \"{low}.main\"")
+    if m.intent != null { L = push(L, "  intent = {q(m.intent)}") }
+    L = push(L, "  " + state_line(m))
+    for g in gate_lines(m, "constraint") { L = push(L, replace(g, "_never_negative ", "_never_negative hard ")) }
+    for ev in m.events {
+      L = push(L, "  on \"{low}.{ev.name}\" (e) " + ob())
+      L = push(L, "    " + change(ev.field, ev.delta))
+      if m.record { L = push(L, "    record \"{low}.{ev.name}\" " + snapshot(m)) }
+      L = push(L, "  " + cb())
+    }
+    if m.door { L = push(L, "  on \"{low}.in\" (e) " + ob() + " emit \"{low}.out\" " + snapshot(m) + " " + cb()) }
+    L = push(L, cb())
+    if m.door { L = push(L, "on \"{low}.out\" (e) " + ob() + " print(\"{n} out\", e) " + cb()) }
+    for ev in unique(map(m.events, fn(x) = x.name)) { L = push(L, "emit \"{low}.{ev}\" " + ob() + cb()) }
+    if m.door { L = push(L, "emit \"{low}.in\" " + ob() + cb()) }
+    L = push(L, "print(\"{n}\", {n}.state)")
+  } else {
+    // a component (a sovereign system is a component with a door)
+    L = push(L, "component {n} " + ob())
+    L = push(L, "  id = \"{low}.main\"")
+    L = push(L, "  namespace = \"{low}\"")
+    L = push(L, "  version = \"1.0.0\"")
+    if m.intent != null { L = push(L, "  intent = {q(m.intent)}") }
+    if len(m.fields) > 0 { L = push(L, "  " + state_line(m)) }
+    for g in gate_lines(m, "boundary") { L = push(L, g) }
+    var outs = []
+    for f in m.fields { outs = push(outs, "{f}: num") }
+    for ev in unique(map(m.events, fn(x) = x.name)) {
+      L = push(L, "  in {ident(ev)}(x: " + ob() + " value: num " + cb() + ") " + ob())
+      for e in filter(m.events, fn(x) = x.name == ev) { L = push(L, "    " + change(e.field, e.delta)) }
+      if m.record { L = push(L, "    record \"{low}.{ev}\" " + snapshot(m)) }
+      L = push(L, "  " + cb())
+    }
+    if m.door {
+      L = push(L, "  in input(x: " + ob() + " value: num " + cb() + ") " + ob())
+      if m.record { L = push(L, "    record \"{low}.input\" " + ob() + " value: x.value " + cb()) }
+      L = push(L, "    emit out result " + snapshot(m))
+      L = push(L, "  " + cb())
+      L = push(L, "  out result: " + ob() + " " + join(outs, ", ") + " " + cb())
+    }
+    L = push(L, cb())
+    for ev in unique(map(m.events, fn(x) = x.name)) { L = push(L, "wire \"{low}.{ev}\" -> {n}.{ident(ev)}") }
+    if m.door {
+      L = push(L, "wire \"{low}.in\" -> {n}.input")
+      L = push(L, "wire {n}.result -> \"{low}.out\"")
+      L = push(L, "on \"{low}.out\" (r) " + ob() + " print(\"{n}\", r) " + cb())
+    }
+    for ev in unique(map(m.events, fn(x) = x.name)) { L = push(L, "emit \"{low}.{ev}\" " + ob() + " value: 1 " + cb()) }
+    if m.door { L = push(L, "emit \"{low}.in\" " + ob() + " value: 1 " + cb()) }
+    if len(m.fields) > 0 { L = push(L, "print(\"{n}\", {n}.state)") }
+  }
+  if m.test {
+    L = push(L, "")
+    L = push(L, "test \"{n} keeps its gates\" " + ob())
+    for ev in unique(map(m.events, fn(x) = x.name)) {
+      if m.kind == "compartment" { L = push(L, "  emit \"{low}.{ev}\" " + ob() + cb()) } else { L = push(L, "  emit \"{low}.{ev}\" " + ob() + " value: 1 " + cb()) }
+    }
+    var checks = 0
+    for g in m.gates {
+      var targets = m.fields
+      if g.field != null { targets = [g.field] }
+      for f in targets {
+        if g.kind == "nonneg" { L = push(L, "  expect {n}.state.{f} >= 0, \"{f} never negative\"") }
+        if g.kind == "max" { L = push(L, "  expect {n}.state.{f} <= {g.n}, \"{f} at most {g.n}\"") }
+        checks += 1
+      }
+    }
+    if checks == 0 { L = push(L, "  expect true, \"{n} runs\"") }
+    L = push(L, cb())
+  }
+  return join(L, "\n") + "\n"
+}
+
+// ── the report: what was understood, in his words, with his quote ──────────────
+fn report(m) {
+  var L = ["understood, in your words:"]
+  var shown = []
+  for u in m.used {
+    if not (shown contains u.form) {
+      shown = push(shown, u.form)
+      let e = lex.words[u.idx]
+      let ev = e.from[0]
+      var how = ""
+      if u.taught { how = " (you taught it)" }
+      L = push(L, "  \"{u.form}\"{how} → {e.means}")
+      L = push(L, "      you: \"{slice(ev.said, 0, 140)}\" ({ev.date}, {ev.where})")
+    }
+  }
+  if m.kind != null { L = push(L, "  so: a {m.kind} called {m.name ?? "?"}") }
+  if len(m.gaps) > 0 {
+    L = push(L, "gaps (nothing guessed):")
+    for g in m.gaps { L = push(L, "  {g.what} — say: {g.say}") }
+  }
+  return join(L, "\n")
+}
+
+// ── teach: a phrase becomes a form of a word he already has (his crystal rule: verify, then keep) ─────────────
+fn teach(phrase, word) {
+  let p = join(filter(map(split(lower(phrase), " "), bare), fn(w) = w != ""), " ")
+  if p == "" { raise("teach needs a phrase") }
+  if entry_of(p) >= 0 { raise("\"{p}\" is already in your words") }
+  let i = entry_of(word)
+  if i < 0 { raise("\"{word}\" is not one of your words (eg words lists them)") }
+  var L = ["// lang/say/taught.eg — phrases he taught (eg teach \"<phrase>\" as <word>). Written by eg teach; literal data only.", "let taught = ["]
+  var all = push(tg.taught, { form: p, word: word })
+  for k, t in all {
+    var sep = ","
+    if k == len(all) - 1 { sep = "" }
+    L = push(L, "  " + ob() + " form: {q(t.form)}, word: {q(t.word)} " + cb() + sep)
+  }
+  L = push(L, "]")
+  return { phrase: p, word: word, means: lex.words[i].means, text: join(L, "\n") + "\n" }
+}
+
+fn words() {
+  var L = []
+  for e in lex.words {
+    L = push(L, join(map(e.forms, fn(f) = "\"{f}\""), ", ") + " → {e.means}")
+    for ev in e.from { L = push(L, "    you: \"{ev.said}\" ({ev.date}, {ev.where})") }
+  }
+  for t in tg.taught { L = push(L, "\"{t.form}\" → taught, means the same as \"{t.word}\"") }
+  return join(L, "\n")
+}
+
+let a = args()
+if len(a) == 0 { raise("usage: say \"<sentence>\" | teach \"<phrase>\" <word> | words") }
+if a[0] == "say" {
+  let m = understand(a[1] ?? "")
+  var src = ""
+  if len(m.gaps) == 0 { src = source(m) }
+  print(json({ ok: len(m.gaps) == 0, name: lower(m.name ?? ""), source: src, report: report(m) }))
+} else if a[0] == "teach" {
+  print(json(teach(a[1] ?? "", a[2] ?? "")))
+} else if a[0] == "words" {
+  print(words())
+} else {
+  raise("usage: say \"<sentence>\" | teach \"<phrase>\" <word> | words")
+}

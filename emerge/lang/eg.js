@@ -20,6 +20,10 @@ const USAGE = `emerge ${lang.VERSION} — the Emerge language
   eg ide [folder] [--port 4343]                               a local editor for .eg files: autocomplete, live errors, run/test,
                                                               and a Generate button that writes new .eg files
   eg gen <compartment|component|test|module|program> <Name> [folder]   write a new .eg file into emerge/output (or folder)
+  eg say "<a sentence in your words>" [folder]                write the Emerge it means into emerge/output (or folder), no model:
+                                                              each word understood is shown with your quote; an unknown word is a gap
+  eg teach "<phrase>" as <word>                               add a phrase to your words, as a form of a word you already have
+  eg words                                                    your vocabulary, each word with the quote it came from
   eg map [--out MAP.md]                                       the language map: every keyword, primitive, builtin
   eg repl                                                     interactive; an expression prints its value
   eg components <file.eg> [--out graph.json]                  export components, hooks and wires as loom records,
@@ -249,6 +253,46 @@ function main(argv) {
       if (fs.existsSync(file)) die(`error: ${file} exists`);
       fs.writeFileSync(file, GENERATORS[kind](name));
       process.stdout.write(`created ${file}\n`);
+      return;
+    }
+    case 'say': case 'teach': case 'words': {
+      // his words in, Emerge out (emerge/spec/say.spec). The reading is Emerge's own (lang/say/say.eg); this only checks and writes.
+      const SAY = path.join(__dirname, 'say', 'say.eg');
+      let argv;
+      if (cmd === 'say') {
+        if (!rest[0]) die('usage: eg say "<a sentence in your words>" [folder]');
+        argv = ['say', rest[0]];
+      } else if (cmd === 'teach') {
+        if (!rest[0] || rest[1] !== 'as' || !rest[2]) die('usage: eg teach "<phrase>" as <word>');
+        argv = ['teach', rest[0], rest[2]];
+      } else argv = ['words'];
+      const r = require('child_process').spawnSync(process.execPath, [__filename, 'run', SAY, ...argv], { encoding: 'utf8', maxBuffer: 1 << 26 });
+      if (r.status !== 0) die((r.stderr || r.stdout).trim(), 1);
+      if (cmd === 'words') { process.stdout.write(r.stdout); return; }
+      const out = JSON.parse(r.stdout.trim().split('\n').pop());
+      if (cmd === 'teach') {
+        const file = path.join(__dirname, 'say', 'taught.eg');
+        const c = lang.compileSource(out.text, 'taught.eg');
+        if (c.errors.length) die('teach refused: taught.eg would not check: ' + c.errors[0].message, 1);
+        fs.writeFileSync(file, out.text);
+        process.stdout.write(`learned "${out.phrase}" — it means what "${out.word}" means: ${out.means}\n`);
+        return;
+      }
+      process.stdout.write(out.report + '\n');
+      if (!out.ok) { process.exitCode = 1; return; }
+      const c = lang.compileSource(out.source, out.name + '.eg');
+      if (c.errors.length) {
+        process.stdout.write('the checker refused what was written (no file):\n' + c.errors.map(e => '  ' + e.message).join('\n') + '\n');
+        process.exitCode = 1;
+        return;
+      }
+      const { OUTPUT } = require('./ide');
+      const dir = rest[1] || OUTPUT;
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, out.name.replace(/[^a-z0-9_]/g, '_') + '.eg');
+      if (fs.existsSync(file)) die(`error: ${file} exists`, 1);
+      fs.writeFileSync(file, out.source);
+      process.stdout.write(`wrote ${file} (checks clean). run it: eg run ${file}\n`);
       return;
     }
     case 'repl': return repl();
