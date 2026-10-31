@@ -1,0 +1,482 @@
+// lang/learn/learn.eg — lessons that break themselves down. Spec: emerge/spec/learn.spec. No model.
+// James, 2026-10-31: "dynamically breaks lessons down to help comprehention and reduce overwhlem" · 2026-10-13: "everything
+// can be broken down into smaller pieces, with gates between. dynamic chunking for smaller agents or if the agent is
+// struggling?" · 2026-10-02: "need increments of zoom" · 2026-10-28: "stub: just the notes from the input. chunked:
+// decomposed pieces of the component, dynamically recursive chunking."
+// Zoom 0 is the stub (the idea, and the first thing to try); 1 is one step; 2 is a step's lines, one at a time; 3 is a
+// line's words, each plainly and then exactly. The view is a pure function of the keys pressed, replayed from the start.
+//   eg run learn.eg list <docs/learn>                         → the lessons
+//   eg run learn.eg view <lesson.md> <words.md> <keys> [stub|full]   → one view
+use "./learn.node" as node
+let o = node.payload.options
+let kw = node.payload.keywords
+
+let FENCE = "```"
+
+// the item at i, or d when i is past the end (indexing past the end is an error in Emerge, never null)
+fn at(xs, i, d) {
+  if i < len(xs) { return xs[i] }
+  return d
+}
+
+// ── text ─────────────────────────────────────────────────────────────────────
+fn lines_of(text) = split(replace(text, "\r", ""), "\n")
+fn strip_marks(s) = trim(replace(replace(s, "**", ""), "`", ""))
+fn words_in(s) {
+  var out = []
+  var cur = []
+  for c in split(lower(s), "") {
+    if (c >= "a" and c <= "z") or (c >= "0" and c <= "9") or c == "_" {
+      cur = push(cur, c)
+    } else {
+      if len(cur) > 0 { out = push(out, join(cur, "")) }
+      cur = []
+    }
+  }
+  if len(cur) > 0 { out = push(out, join(cur, "")) }
+  return out
+}
+// the words a line puts in backticks
+fn ticked(s) {
+  var out = []
+  let parts = split(s, "`")
+  for i, p in parts {
+    if i % 2 == 1 { out = out + words_in(p) }
+  }
+  return unique(out)
+}
+// sentences: a break after . ? ! followed by a space and a capital, a backtick or a star
+fn sentences(text) {
+  var out = []
+  var cur = []
+  let cs = split(text, "")
+  for i, c in cs {
+    cur = push(cur, c)
+    if (c == "." or c == "?" or c == "!") and at(cs, i + 1, "") == " " {
+      let n = at(cs, i + 2, "")
+      if (n >= "A" and n <= "Z") or n == "`" or n == "*" {
+        out = push(out, trim(join(cur, "")))
+        cur = []
+      }
+    }
+  }
+  if trim(join(cur, "")) != "" { out = push(out, trim(join(cur, ""))) }
+  return out
+}
+
+// ── the glossary: | **word** | plainly | exactly | ──────────────────────────────
+fn glossary(text) {
+  var out = []
+  for l in lines_of(text) {
+    if l starts_with "| **" {
+      let cells = split(l, "|")
+      if len(cells) >= 4 {
+        let word = strip_marks(cells[1])
+        out = push(out, { word: word, names: map(split(word, " / "), fn(w) = lower(trim(w))), plain: trim(cells[2]), exact: trim(cells[3]) })
+      }
+    }
+  }
+  return out
+}
+fn find_words(line, gl) {
+  let ws = words_in(line)
+  let low = " " + join(ws, " ") + " "
+  var out = []
+  var seen = []
+  for g in gl {
+    var hit = false
+    for n in g.names {
+      if find_text(low, " " + join(words_in(n), " ") + " ") >= 0 { hit = true }
+    }
+    for w in ws {
+      if has(kw, w) and kw[w] == g.word { hit = true }
+    }
+    if hit and not (seen contains g.word) {
+      seen = push(seen, g.word)
+      out = push(out, g)
+    }
+  }
+  return out
+}
+
+// ── the lesson as sections, each a list of blocks (paragraph, bullet item, table, code) ──────────────────────
+fn sections(text) {
+  var title = ""
+  var secs = []
+  var cur = { head: "", blocks: [] }
+  var block = []
+  var kind = ""
+  var in_code = false
+  fn flush() {
+    if len(block) > 0 { cur.blocks = push(cur.blocks, { kind: kind, lines: block }) }
+    block = []
+    kind = ""
+  }
+  for l in lines_of(text) {
+    if in_code {
+      block = push(block, l)
+      if trim(l) starts_with FENCE {
+        in_code = false
+        if kind == "code" { flush() }
+      }
+    } else if l starts_with "# " and title == "" {
+      title = strip_marks(slice(l, 2))
+    } else if l starts_with "## " {
+      flush()
+      if cur.head != "" or len(cur.blocks) > 0 { secs = push(secs, cur) }
+      cur = { head: strip_marks(slice(l, 3)), blocks: [] }
+    } else if trim(l) starts_with FENCE {
+      // a fence at the left margin is its own block; an indented one belongs to the bullet it sits in
+      if l starts_with FENCE {
+        flush()
+        kind = "code"
+      }
+      block = push(block, l)
+      in_code = true
+    } else if trim(l) == "" {
+      if kind != "item" { flush() } else { block = push(block, l) }
+    } else if l starts_with "- " or (l matches "^[0-9]+\\. ") {
+      flush()
+      kind = "item"
+      block = push(block, l)
+    } else if l starts_with "|" {
+      if kind != "table" { flush() }
+      kind = "table"
+      block = push(block, l)
+    } else if (l starts_with "  " or l starts_with "\t") and kind == "item" {
+      block = push(block, l)
+    } else {
+      if kind == "item" or kind == "table" { flush() }
+      if kind == "" { kind = "para" }
+      block = push(block, l)
+    }
+  }
+  flush()
+  secs = push(secs, cur)
+  return { title: title, secs: secs }
+}
+fn block_text(b) = trim(join(filter(b.lines, fn(l) = trim(l) != ""), "\n"))
+fn code_body(b) = filter(b.lines, fn(l) = not (trim(l) starts_with FENCE))
+fn is_eg(b) = b.kind == "code" and (trim(b.lines[0]) == FENCE + "eg")
+
+// ── the tree ─────────────────────────────────────────────────────────────────
+// a code block cut at blank lines, then into chunks of at most chunk_lines lines
+fn chunks(body) {
+  var out = []
+  var cur = []
+  for l in body {
+    if trim(l) == "" {
+      if len(cur) > 0 { out = push(out, cur) }
+      cur = []
+    } else {
+      cur = push(cur, l)
+      if len(cur) >= o.chunk_lines {
+        out = push(out, cur)
+        cur = []
+      }
+    }
+  }
+  if len(cur) > 0 { out = push(out, cur) }
+  return out
+}
+fn text_lines(text) {
+  var out = []
+  for l in lines_of(text) {
+    if trim(l) != "" {
+      if l starts_with "|" or l starts_with "  " or trim(l) starts_with FENCE { out = push(out, l) } else { out = out + sentences(l) }
+    }
+  }
+  return out
+}
+fn mk_step(kind, text, notes, gl) {
+  var ls = []
+  if kind == "code" { ls = filter(lines_of(text), fn(l) = trim(l) != "") } else { ls = text_lines(text) }
+  for n in notes { ls = ls + text_lines(n) }
+  return { kind: kind, text: text, notes: notes, lines: map(ls, fn(l) = { text: l, words: find_words(l, gl) }) }
+}
+
+// words worth matching: not digits, not one or two letters
+fn keywords(ws) = filter(ws, fn(w) = len(w) > 2 and not (w matches "^[0-9]+$"))
+// a chunk that is only closing braces belongs to the chunk before it
+fn tidy(cs) {
+  var out = []
+  for c in cs {
+    let only_close = len(filter(c, fn(l) = not (trim(l) matches "^[\})\\]]+$"))) == 0
+    if only_close and len(out) > 0 { out[len(out) - 1] = out[len(out) - 1] + c } else { out = push(out, c) }
+  }
+  return out
+}
+
+fn tree(lesson, words) {
+  let gl = glossary(words)
+  let doc = sections(lesson)
+  // pass 1: the lesson in order, code cut into chunks; the explanations of "What happened" set aside
+  var items = []
+  var notes = []
+  var pre = []
+  var idea = ""
+  var first_turn = null
+  for si, s in doc.secs {
+    let head = lower(s.head)
+    for b in s.blocks {
+      let t = block_text(b)
+      if head starts_with "what happened" {
+        notes = push(notes, { text: t, words: keywords(ticked(t)) })
+      } else if t starts_with "**Next:**" or t == "" {
+        // the way on, not a step
+      } else if si == 0 and s.head == "" {
+        pre = push(pre, t)
+      } else if is_eg(b) {
+        for c in tidy(chunks(code_body(b))) {
+          var cw = []
+          for l in c { cw = cw + words_in(l) }
+          items = push(items, { type: "chunk", text: join(c, "\n"), words: unique(cw) })
+        }
+      } else {
+        var kind = "text"
+        if head starts_with "the idea" { kind = "idea" }
+        if head starts_with "your turn" { kind = "turn" }
+        if head starts_with "the system view" { kind = "system" }
+        if b.kind == "code" { kind = "run" }
+        if kind == "idea" and idea == "" { idea = t }
+        if kind == "turn" and first_turn == null { first_turn = t }
+        items = push(items, { type: "block", kind: kind, text: t })
+      }
+    }
+    if head starts_with "try it" or head starts_with "the architecture" { items = push(items, { type: "notes" }) }
+  }
+  // pass 2: each explanation goes to the chunk that holds the most of the words it names
+  var home = []
+  for n in notes {
+    var best = -1
+    var score = 0
+    for k, it in items {
+      if it.type == "chunk" {
+        let sc = len(filter(n.words, fn(w) = it.words contains w))
+        if sc > score {
+          score = sc
+          best = k
+        }
+      }
+    }
+    home = push(home, best)
+  }
+  // pass 3: the steps; a line that only introduces what follows (it ends in ":") joins it
+  var steps = []
+  var intro = null
+  var placed = false
+  fn put(kind, text, mine) {
+    var t = text
+    if intro != null {
+      t = intro + "\n\n" + text
+      intro = null
+    }
+    steps = push(steps, mk_step(kind, t, mine, gl))
+  }
+  fn loose() {
+    for k, n in notes {
+      if home[k] < 0 { put("explain", n.text, []) }
+    }
+    placed = true
+  }
+  for k, it in items {
+    if it.type == "chunk" {
+      var mine = []
+      for i, n in notes {
+        if home[i] == k { mine = push(mine, n.text) }
+      }
+      put("code", it.text, mine)
+    } else if it.type == "notes" {
+      if not placed { loose() }
+    } else if it.text ends_with ":" and k + 1 < len(items) and items[k + 1].type != "notes" {
+      intro = it.text
+    } else {
+      put(it.kind, it.text, [])
+    }
+  }
+  if not placed { loose() }
+  if idea == "" and len(steps) > 0 { idea = steps[0].text }
+  var stub = pre + [idea]
+  if first_turn != null { stub = push(stub, first_turn) }
+  return { title: doc.title, stub: stub, steps: steps, full: lesson }
+}
+
+// for the terminal: no ** and no link targets ([text](url) → text)
+fn render(s) {
+  var out = []
+  let cs = split(replace(s, "**", ""), "")
+  var i = 0
+  while i < len(cs) {
+    if cs[i] == "]" and at(cs, i + 1, "") == "(" {
+      var j = i + 2
+      while j < len(cs) and cs[j] != ")" { j += 1 }
+      i = j + 1
+    } else if cs[i] == "[" {
+      i += 1
+    } else {
+      out = push(out, cs[i])
+      i += 1
+    }
+  }
+  return join(out, "")
+}
+
+// ── the view after a list of keys ─────────────────────────────────────────────
+let ZOOM = ["the stub", "one step", "one line", "one word"]
+let KEYS = "keys: n next · m more (smaller) · l less (bigger) · b back · s stub · f full · q quit"
+
+fn view(t, keys, start) {
+  var zoom = 1
+  var base = 1
+  var full = false
+  if start == "stub" { zoom = 0 }
+  if start == "full" { full = true }
+  var step = 0
+  var at = 0
+  var w = 0
+  var opened = false          // zoomed in on this step
+  var struggle = 0            // steps in a row zoomed into
+  var easy = 0                // steps in a row passed without zooming
+  var said = []
+  let ns = len(t.steps)
+  fn enter(k) {
+    step = k
+    zoom = base
+    at = 0
+    w = 0
+    opened = false
+  }
+  for key in split(keys, "") {
+    said = []
+    full = false
+    if key == "n" {
+      if zoom == 0 {
+        enter(0)
+      } else if zoom == 3 and w + 1 < len(t.steps[step].lines[at].words) {
+        w += 1
+      } else if zoom >= 2 and at + 1 < len(t.steps[step].lines) {
+        at += 1
+        w = 0
+        if zoom == 3 and len(t.steps[step].lines[at].words) == 0 { zoom = 2 }
+      } else if step + 1 < ns {
+        // leaving a step: did the reader need it smaller?
+        if opened {
+          struggle += 1
+          easy = 0
+        } else {
+          easy += 1
+          struggle = 0
+        }
+        if struggle >= o.struggle_after and base < 2 {
+          base = 2
+          struggle = 0
+          said = push(said, "You opened the last {o.struggle_after} steps, so from here each step opens line by line. Press l for a whole step.")
+        }
+        if easy >= o.easy_after and base > 1 {
+          base = 1
+          easy = 0
+          said = push(said, "You are moving easily, so steps are whole again. Press m any time to open one.")
+        }
+        enter(step + 1)
+      } else {
+        said = push(said, "That was the last step. b goes back, s shows the stub, f the whole lesson.")
+      }
+    } else if key == "b" {
+      if zoom >= 2 and at > 0 {
+        at -= 1
+        w = 0
+      } else if step > 0 {
+        enter(step - 1)
+      } else {
+        said = push(said, "This is the first step.")
+      }
+    } else if key == "m" {
+      if zoom == 0 {
+        enter(0)
+      } else if zoom == 1 {
+        if len(t.steps[step].lines) > 1 {
+          zoom = 2
+          at = 0
+          opened = true
+        } else if len(t.steps[step].lines) == 1 and len(t.steps[step].lines[0].words) > 0 {
+          zoom = 3
+          at = 0
+          w = 0
+          opened = true
+        } else {
+          said = push(said, "This step is already as small as it gets.")
+        }
+      } else if zoom == 2 {
+        if len(t.steps[step].lines[at].words) > 0 {
+          zoom = 3
+          w = 0
+          opened = true
+        } else {
+          said = push(said, "No word in this line needs explaining. n goes on.")
+        }
+      } else {
+        said = push(said, "This is one word: as small as it gets.")
+      }
+    } else if key == "l" {
+      if zoom > 0 { zoom -= 1 }
+    } else if key == "s" {
+      zoom = 0
+    } else if key == "f" {
+      full = true
+    } else if key == "q" {
+      // the command stops; the view stays
+    } else {
+      said = push(said, "\"{key}\" is not a key here.")
+    }
+  }
+  var L = []
+  if full {
+    L = push(L, t.full)
+  } else if zoom == 0 {
+    L = push(L, "{t.title} · the stub (the idea, and one thing to try)")
+    L = push(L, "")
+    for x in t.stub { L = push(L, x) }
+  } else {
+    let s = t.steps[step]
+    L = push(L, "{t.title} · step {step + 1} of {ns} · {ZOOM[zoom]}")
+    L = push(L, "")
+    if zoom == 1 {
+      L = push(L, s.text)
+      for n in s.notes {
+        L = push(L, "")
+        L = push(L, n)
+      }
+    } else if zoom == 2 {
+      L = push(L, "line {at + 1} of {len(s.lines)}:")
+      L = push(L, s.lines[at].text)
+      if len(s.lines[at].words) > 0 { L = push(L, "  (m: what " + join(map(s.lines[at].words, fn(g) = g.word), ", ") + " means)") }
+    } else {
+      let ln = s.lines[at]
+      let g = ln.words[w]
+      L = push(L, "in: {trim(ln.text)}")
+      L = push(L, "")
+      L = push(L, "{g.word} ({w + 1} of {len(ln.words)})")
+      L = push(L, "  plainly: {g.plain}")
+      L = push(L, "  exactly: {g.exact}")
+    }
+  }
+  if len(said) > 0 {
+    L = push(L, "")
+    for x in said { L = push(L, "» " + x) }
+  }
+  L = push(L, "")
+  L = push(L, KEYS)
+  return { text: render(join(L, "\n")), zoom: zoom, base: base, step: step, at: at }
+}
+
+let a = args()
+if len(a) == 0 { raise("usage: list <docs/learn> | view <lesson.md> <words.md> <keys> [stub|full]") }
+if a[0] == "list" {
+  print(at(a, 1, ""))
+} else if a[0] == "view" {
+  let t = tree(read_file(a[1]), read_file(a[2]))
+  let v = view(t, at(a, 3, ""), at(a, 4, ""))
+  print(json({ text: v.text, zoom: v.zoom, base: v.base, step: v.step, steps: len(t.steps) }))
+} else {
+  raise("usage: list <docs/learn> | view <lesson.md> <words.md> <keys> [stub|full]")
+}

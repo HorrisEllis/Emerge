@@ -24,6 +24,8 @@ const USAGE = `emerge ${lang.VERSION} — the Emerge language
                                                               each word understood is shown with your quote; an unknown word is a gap
   eg teach "<phrase>" as <word>                               add a phrase to your words, as a form of a word you already have
   eg words                                                    your vocabulary, each word with the quote it came from
+  eg learn [n] [--stub | --full] [--keys <keys>]              a lesson at the size you can take: n next, m more (smaller),
+                                                              l less, b back; steps get smaller when you keep opening them
   eg map [--out MAP.md]                                       the language map: every keyword, primitive, builtin
   eg repl                                                     interactive; an expression prints its value
   eg components <file.eg> [--out graph.json]                  export components, hooks and wires as loom records,
@@ -308,6 +310,36 @@ function main(argv) {
       if (out.node) fs.writeFileSync(nodeFile, out.node);
       fs.writeFileSync(file, out.source);
       process.stdout.write(`wrote ${file}${out.node ? ` and ${path.basename(nodeFile)} (its levers and starting data)` : ''} — checks clean. run it: eg run ${file}\n`);
+      return;
+    }
+    case 'learn': {
+      // lessons that break themselves down (emerge/spec/learn.spec); the breaking down is Emerge's (lang/learn/learn.eg)
+      const DOCS = path.join(__dirname, '..', '..', 'docs', 'learn');
+      if (!fs.existsSync(DOCS)) die('error: no docs/learn folder at ' + DOCS, 1);
+      const lessons = fs.readdirSync(DOCS).filter(f => /^[0-9]/.test(f) && f.endsWith('.md')).sort();
+      const pick = rest.find(a => !a.startsWith('--') && rest[rest.indexOf(a) - 1] !== '--keys');
+      const file = pick && lessons.find(f => f.split('-')[0] === pick);
+      if (!file) {
+        process.stdout.write(lessons.map(f => '  ' + f.split('-')[0].padEnd(4) + fs.readFileSync(path.join(DOCS, f), 'utf8').split('\n')[0].replace(/^# /, '')).join('\n') + '\n  eg learn <n> to start one\n');
+        if (pick) process.exitCode = 1;
+        return;
+      }
+      const start = rest.includes('--stub') ? 'stub' : rest.includes('--full') ? 'full' : '';
+      const ki = rest.indexOf('--keys');
+      const show = keys => {
+        const r = require('child_process').spawnSync(process.execPath, [__filename, 'run', path.join(__dirname, 'learn', 'learn.eg'), 'view', path.join(DOCS, file), path.join(DOCS, 'words.md'), keys, start], { encoding: 'utf8' });
+        if (r.status !== 0) die((r.stderr || r.stdout).trim(), 1);
+        return JSON.parse(r.stdout.trim().split('\n').pop()).text;
+      };
+      if (ki >= 0 || !process.stdin.isTTY) { process.stdout.write(show(ki >= 0 ? rest[ki + 1] || '' : '') + '\n'); return; }
+      let keys = '';
+      process.stdout.write('\x1b[2J\x1b[H' + show(keys) + '\n');
+      process.stdin.setRawMode(true); process.stdin.resume(); process.stdin.setEncoding('utf8');
+      process.stdin.on('data', k => {
+        if (k === 'q' || k === '\u0003') { process.stdin.setRawMode(false); process.exit(0); }
+        keys += k === '\r' || k === ' ' ? 'n' : k;
+        process.stdout.write('\x1b[2J\x1b[H' + show(keys) + '\n');
+      });
       return;
     }
     case 'repl': return repl();

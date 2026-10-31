@@ -1,0 +1,32 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-learn-node",
+  "type": "options",
+  "id": "learn",
+  "intent": "lessons at the size the reader can take: zoom in until it is small enough",
+  "summary": "the levers of eg learn (lang/learn/learn.eg). His rule, 2026-10-31: only using hardcoded when neccarry, using external node files for data, options, etc. Change them here, not in the code.",
+  "system": "emerge",
+  "tags": ["eg learn"],
+  "payload": {
+    "options": {
+      "chunk_lines": 4,
+      "struggle_after": 2,
+      "easy_after": 3
+    },
+    "keywords": {
+      "emit": "signal / event",
+      "on": "signal / event",
+      "hard": "constraint",
+      "soft": "friction",
+      "cost": "friction",
+      "in": "hook",
+      "out": "hook",
+      "spawn": "template",
+      "despawn": "template",
+      "record": "ledger",
+      "ledger_verify": "ledger",
+      "gaps": "gap",
+      "use": "node file"
+    }
+  }
+}

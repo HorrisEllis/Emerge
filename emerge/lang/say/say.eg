@@ -39,6 +39,12 @@ fn all_forms() {
   return sort_by(out, fn(x) = x.n * 1000 + len(x.form), "desc")
 }
 
+// the item at i, or d when i is past the end (indexing past the end is an error in Emerge, never null)
+fn at(xs, i, d) {
+  if i < len(xs) { return xs[i] }
+  return d
+}
+
 // ── words ────────────────────────────────────────────────────────────────────
 fn bare(w) {
   var out = []
@@ -86,7 +92,7 @@ fn clauses(sentence) {
   for i, c in cs {
     var ends = c == ";" or c == "," or c == "\n"
     if c == "." {
-      let next = cs[i + 1] ?? " "
+      let next = at(cs, i + 1, " ")
       ends = not (next >= "0" and next <= "9")
     }
     if ends {
@@ -563,7 +569,7 @@ fn source(m) {
   if m.gaps_used { L = push(L, "on \"gap.opened\" (g) " + ob() + " print(\"gap:\", g.message) " + cb()) }
   // what if: a preview in a fork; the real state is untouched
   for k, w in m.whatifs {
-    var ev = w ?? (names[0] ?? null)
+    var ev = w ?? at(names, 0, null)
     if ev != null {
       L = push(L, "let what_if_{k + 1} = whatif " + ob())
       L = push(L, "  emit \"{low}.{ev}\" " + payload(m))
@@ -681,7 +687,7 @@ fn words() {
 let a = args()
 if len(a) == 0 { raise("usage: say \"<sentence>\" | teach \"<phrase>\" <word> | words") }
 if a[0] == "say" {
-  let m = understand(a[1] ?? "")
+  let m = understand(at(a, 1, ""))
   var src = ""
   var nd = ""
   if len(m.gaps) == 0 {
@@ -690,7 +696,7 @@ if a[0] == "say" {
   }
   print(json({ ok: len(m.gaps) == 0, name: lower(m.name ?? ""), source: src, node: nd, report: report(m) }))
 } else if a[0] == "teach" {
-  print(json(teach(a[1] ?? "", a[2] ?? "")))
+  print(json(teach(at(a, 1, ""), at(a, 2, ""))))
 } else if a[0] == "words" {
   print(words())
 } else {
