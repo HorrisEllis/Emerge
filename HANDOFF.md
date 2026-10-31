@@ -1,3 +1,36 @@
+# Handoff — 2026-10-31 (later): Emerge is a system
+
+His words: "emerge needs either to be a module for idearium, or a system with a server.js, etc. look at the genesis and architecture spec
+in idearium. needs to be one" · "okay. do it as long as it gets up closer to building large projects, like i want to be buyilding an
+operating systems"
+
+Branch `claude/emerge-as-a-system` (this repo) and Nexus `claude/emerge-as-a-system` (0.60.336). Spec: Nexus `docs/emerge-system.spec`;
+map: Nexus `docs/2026-10-31-emerge-as-a-system-phasemap.spec`.
+
+| Phase | State | Where |
+|---|---|---|
+| EAS_D0 a system, not an Idearium module | decided by his axioms (§5.15 r2, r3; §3.1; §5.9) | the map |
+| EAS1 genesis skeleton in `emerge/` | built `19200ff` | `server.js` :4900, `cli.js`, `lib/system.js`; shared paths renamed: `ide-registry.js`, `ide-contract.json`, `events-compiler.js`, `schemas/records/` |
+| EAS1a boundary reads code, not text | built (Nexus archetype) | Nexus `cos/archetype/nexus-system/lib/boundary.js` |
+| EAS2 the language through the door | built `8ca9aa3`, 1.13.0 | `lib/lang.js`; POST `/lang/check`, `/run`, `/test`, `/build`, `/say`, `/synth`; `node cli.js lang-<verb>` |
+| EAS5 a system of systems | built `58a12d8` | `tests/nesting.test.js`: emerge → os → kernel → scheduler (code in Emerge); shell → kernel → scheduler by handoff |
+| EAS3 one Emerge at Nexus's top level, locked | open | EAS_D1 **to confirm with him** (his MG28: "copy every file you need to a cos/dependancies folder") |
+| EAS4 lib/emerge's 25 callers through the door; lib/emerge archived | open | guardian t2-gate, idearium compiler-bridge, copilot module-builder, cortex contract-intake, lib/hooks/emerge.hooks.js, build-time scripts |
+
+Tests: `cd emerge && npm run test:system` (skeleton, lang-door 8/8, nesting 5/5), in CI.
+
+Next, for building large projects in Emerge (his goal):
+1. **An install command** (`emerge.lang.install`): build Emerge through the door into a module of the tree, with its component,
+   capability, command, route and event nodes. Today the nesting test does it by hand (the built files plus a three-line adapter).
+2. **EAS3, then EAS4** in Nexus, after his answer on EAS_D1.
+3. The list below (the Nexus bridge, his vocabulary, split-on-struggle, the Guardian lifeline) still stands; the bridge now goes through
+   Emerge's door instead of `eg build --standalone` by hand.
+
+Found on Windows, not from this work: Nexus `tests/modules/test-system-skeleton.test.js` crashes on `import()` of an absolute `D:` path;
+SS-02 fails on a CRLF checkout (its patterns expect LF).
+
+---
+
 # Handoff — 2026-10-31
 
 For the next session. Read this, then `emerge/spec/cie-eg.spec` section 0 (his purpose), then the spec of whatever you touch.
