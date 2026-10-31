@@ -875,6 +875,18 @@ spec:
             text: "Nothing is guessed. What no word, template or case covers is a gap, closed once."
           - id: LP-04
             text: "Model use is measured: the count of gaps closed by a model per run. The loop's direction is that count falling to zero."
+          - id: LP-05
+            text: "Negative space: what never crossed is measured, not assumed covered — boundaries and edges never crossed, cases and else branches never taken, error paths never produced, input ranges a boundary admits but no crossing has shown, and an expected successor missing (A is followed by B in the grammar; here it was not). Each is a gap (evidential) and a test target before it fails."
+          - id: LP-06
+            text: "Shadow: what happened but went unnoticed is probed, not trusted — a deliberate break of one unit that no gate catches is a boundary too loose (as in 15's evidence: three of ten mistakes absorbed by another unit's boundary); a gap that fires downstream of its cause is attributed to its root by causal parent, not to where it surfaced; a soft constraint absorbing the same cost again and again is friction carried, not resolved. Each is a gap (assumption) that tightens a boundary."
+        sources_of_learning: >
+          Three, one per tense of evidence: failed tests (what happened and failed), shadow (what happened and was not
+          noticed), negative space (what never happened). A model learns only from what it sees; this knows the shape of
+          what it has not seen, because every boundary is declared and every crossing is recorded.
+        human_text_detectors: >
+          Not ported. Nexus rfr2/liminal shadow.js and negative-space.js read human language (pronouns, minimisation,
+          grief, avoidance); the ledger has none, and people-modelling sits behind his consent boundary. The same decision
+          observe/liminal.js already records ("left behind on purpose"). Only the reasoning shape is carried over.
         versus_a_model: >
           Like a language model: it learns from examples (crossings), turns a description into code, and improves with
           failures. Unlike one: every learned thing is a named entry with its source, not a weight; the same input gives
