@@ -1,0 +1,44 @@
+{
+  "envelope": 1,
+  "uuid": "nexus-system-template-schema-event",
+  "type": "schema",
+  "id": "event",
+  "context": "copied from the nexus-system template; emerge owns it from here",
+  "intent": "James, 2026-10-05: \"each component only needs to connect to the registry.\" · \"each component has to have at least one capability, with at least one command, and events, each a node each.\" · \"Maybe add, if applicant, data dir with the directory for the data, consumers, intent, data type/system like node, vector, database or table\" · \"maybe create a template or schema from that.\"",
+  "summary": "what a command announces",
+  "system": "emerge",
+  "tags": [
+    "system-template"
+  ],
+  "source": "idearium/spec-engine/templates/system",
+  "payload": {
+    "status": "REAL",
+    "fields": {
+      "type": {
+        "type": "string",
+        "required": true,
+        "description": "always \"event\""
+      },
+      "id": {
+        "type": "string",
+        "required": true,
+        "description": ""
+      },
+      "uuid": {
+        "type": "string",
+        "required": true,
+        "description": ""
+      },
+      "command": {
+        "type": "string",
+        "required": true,
+        "description": "the command that emits it"
+      },
+      "payload": {
+        "type": "object",
+        "required": true,
+        "description": "the payload's shape"
+      }
+    }
+  }
+}

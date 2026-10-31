@@ -1,0 +1,13 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-rout-0000-0000-000000000117",
+  "type": "route",
+  "id": "emerge.modules",
+  "system": "emerge",
+  "summary": "GET /modules",
+  "payload": {
+    "method": "GET",
+    "path": "/modules",
+    "command": "emerge.modules"
+  }
+}

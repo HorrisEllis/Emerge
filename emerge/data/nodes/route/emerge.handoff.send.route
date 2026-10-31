@@ -1,0 +1,13 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-rout-0000-0000-000000000114",
+  "type": "route",
+  "id": "emerge.handoff.send",
+  "system": "emerge",
+  "summary": "POST /handoffs",
+  "payload": {
+    "method": "POST",
+    "path": "/handoffs",
+    "command": "emerge.handoff.send"
+  }
+}

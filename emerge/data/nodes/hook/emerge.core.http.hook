@@ -1,0 +1,13 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-hook-0000-0000-000000000009",
+  "type": "hook",
+  "id": "emerge.core.http",
+  "system": "emerge",
+  "summary": "the core component over HTTP",
+  "payload": {
+    "component": "emerge.core",
+    "direction": "in",
+    "kind": "http"
+  }
+}

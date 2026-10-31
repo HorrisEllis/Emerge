@@ -9,3 +9,14 @@ emerge/lang/build/previous/
 bench/speed/out/
 bench/speed/work-native
 __pycache__/
+
+# the system's run-time state (genesis skeleton, EAS1): rebuilt from data/nodes/ on boot
+emerge/data/ledger/
+emerge/data/node-index/
+emerge/data/nodes/bundle/
+emerge/modules/
+emerge/input/*.handoff
+emerge/processing/*.handoff
+emerge/done/*.handoff
+emerge/failed/*.handoff
+emerge/output/*.handoff

@@ -1,32 +1,53 @@
-'use strict';
-/**
- * emerge/registry-components.js
- * comp_id: nexus.emerge.registry
- * uuid: nexus-emerge-registry-v1-0000-2026-0627-jamesbrooks-001
- */
-const V='1.1.0';const NS='emerge';   // §5.4 fix 2026-08-08 — was 1.0.0, drifted from canonical lib/version.js's services.emerge (1.1.0)
-function _c(id,method,path,desc,opts={}){
-  return{id:`${NS}.${id}`,namespace:NS,name:id,version:V,
-    grammar:opts.grammar||[id.replace(/\./g,' '),'emerge '+id.split('.')[0]],
-    route:{method,path},description:desc,
-    params:opts.params||[],tags:[NS,...(opts.tags||[])],
-    permissions:opts.permissions||['system'],hooks:opts.hooks||{}};
-}
-module.exports=[
-  _c('health',            'GET',  '/status',              'Emerge IDE health'),
-  _c('compile',           'POST', '/compile',             'Compile .emerge spec → T0/T1/T2 pipeline', {
-    tags:['build'],
-    hooks:{
-      in:[{id:'emerge.compiler.receive',intent:['build','compile','forge'],contract:'nexus-interaction-contract-v1::emerge',tags:['compiler']}],
-      out:[{id:'emerge.compiler.complete',wires_to:['cortex.raid.feedback','guardian.job.dispatch.receive'],tags:['result']}],
-    }}),
-  _c('codegen',           'POST', '/api/codegen',         'Code generation from spec fragment', {tags:['build']}),
-  _c('hot.load',          'POST', '/api/hot-load',        'Hot-patch a running module (QUARANTINE→PROVE→INTEGRATE→MONITOR)', {
-    tags:['hot-load'],
-    hooks:{in:[{id:'emerge.hot-load.receive',intent:['deploy','patch','hot-load'],tags:['hot-load']}]}}),
-  _c('snapshot',          'POST', '/api/snapshot',        'Snapshot before applying patch', {tags:['snapshot']}),
-  _c('check',             'POST', '/api/check',           'Pre-compile spec validation'),
-  _c('models',            'GET',  '/api/models',          'Available Ollama models for compilation'),
-  _c('files',             'GET',  '/api/files',           'File browser for spec loading'),
-  _c('seams',             'GET',  '/api/seams',           'Active SEAM sessions for current file'),
-];
+// registry-components.js — the spine. Every component connects only to this.
+// Each id points at a node in data/nodes/; the node schemas are in schemas/. A new component is one entry here,
+// its file in lib/, and its component, capability, command and event nodes — nothing else is rewired.
+module.exports = {
+  system: 'emerge',
+  components: [
+    {
+      type: 'component',
+      id: 'emerge.core',
+      uuid: 'a0a7dcd2-core-0000-0000-000000000001',
+      file: 'lib/core.js',
+      intent: 'the system reporting on itself: its status and its nodes',
+      version: '0.1.0',
+      status: 'built',
+      capabilities: ['emerge.core.observe'],
+      hooks: ['emerge.core.http'],
+      consumers: [],
+      data: { dir: 'data/nodes', store: 'node', types: ['component', 'capability', 'command', 'event', 'route', 'hook', 'wire', 'bundle'] },
+    },
+    // the drawbridge: work moves to and from other systems as verified files (input/ → processing/ → done/ | failed/)
+    {
+      type: 'component',
+      id: 'emerge.handoff',
+      uuid: 'a0a7dcd2-hand-0000-0000-000000000101',
+      file: 'lib/handoff.js',
+      intent: 'work moves between systems as a file: verified by the registry and the handshake, then moved to the target\'s input/',
+      version: '0.1.0',
+      status: 'built',
+      capabilities: ['emerge.handoff.move'],
+      hooks: [],
+      consumers: [],
+      data: { dir: 'input, processing, done, failed, output', store: 'node', types: ['handoff'] },
+    },
+    // recursion: a module is a system — this skeleton again, one level down, from the system's own template
+    {
+      type: 'component',
+      id: 'emerge.modules',
+      uuid: 'a0a7dcd2-modu-0000-0000-000000000102',
+      file: 'lib/modules.js',
+      intent: 'a module is a system: the skeleton laid out again under modules/, from template/',
+      version: '0.1.0',
+      status: 'built',
+      capabilities: ['emerge.modules.nest'],
+      hooks: [],
+      consumers: [],
+      data: { dir: 'modules', store: 'node', types: ['module'] },
+    },
+    // ── the idea's components slot in below ──
+  ],
+  // the events a person should see, declared here so the UI reads them from the contract and keeps no list of its own
+  // (James, 2026-10-17: "making the ui disposable, soveriegn"): [{ event: 'emerge.x.done', level: 'ok'|'warn'|'err', text }]
+  toasts: [],
+};

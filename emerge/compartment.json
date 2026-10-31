@@ -1,0 +1,7 @@
+{
+  "name": "emerge",
+  "archetype": "nexus-system",
+  "runtimeId": "node",
+  "entry": "server.js",
+  "healthCheck": { "path": "/health", "expectedStatus": 200 }
+}

@@ -1,0 +1,16 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-capa-0000-0000-000000000103",
+  "type": "capability",
+  "id": "emerge.handoff.move",
+  "system": "emerge",
+  "summary": "hand work to another system",
+  "payload": {
+    "component": "emerge.handoff",
+    "summary": "send a handoff (verified first), list every handoff by its folder",
+    "commands": [
+      "emerge.handoff.send",
+      "emerge.handoffs"
+    ]
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "envelope": 1,
+  "uuid": "nexus-system-template-schema-handoff",
+  "type": "schema",
+  "id": "handoff",
+  "context": "copied from the nexus-system template; emerge owns it from here",
+  "intent": "James, 2026-10-12: \"each system hands the file off to the target system, using the registry and hanbdshake verification to tag the progress and success or failure of the handoff and why. then if it passes can be moved to the physical input folder or queue of the system that recieved the handoff.\" · \"nothing pretends to work, and everything is tangible until completed.\"",
+  "summary": "work handed from one system to another, as a file whose folder is its state",
+  "system": "emerge",
+  "tags": [
+    "system-template"
+  ],
+  "source": "idearium/spec-engine/templates/system",
+  "payload": {
+    "status": "REAL",
+    "fields": {
+      "from": {
+        "type": "string",
+        "required": true,
+        "description": "the system that sent it"
+      },
+      "to": {
+        "type": "string",
+        "required": true,
+        "description": "the system it is for — in the sender's registry (a module, the parent, or a peer)"
+      },
+      "kind": {
+        "type": "string",
+        "required": true,
+        "description": "what it is; the receiver runs the command node that accepts this kind"
+      },
+      "payload": {
+        "type": "object",
+        "required": false,
+        "description": "the work itself, checked against the receiver's schema.<kind> when it has one"
+      },
+      "state": {
+        "type": "string",
+        "required": true,
+        "description": "proposed · verifying · refused · queued · taken · done · failed — and the folder it is in says the same"
+      },
+      "reason": {
+        "type": "string",
+        "required": false,
+        "description": "why it was refused or failed"
+      },
+      "history": {
+        "type": "array",
+        "required": true,
+        "description": "every state it passed through: { ts, state, by, why }"
+      },
+      "replyTo": {
+        "type": "object",
+        "required": false,
+        "description": "where the receiver reports back: { dir } or { url }"
+      },
+      "result": {
+        "type": "object",
+        "required": false,
+        "description": "what the receiving command returned"
+      }
+    }
+  }
+}

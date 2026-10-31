@@ -1,61 +1,74 @@
-envelope: 1
-uuid: nexus-export-schema-component
-type: schema
-id: component
-context: >-
-  emerge/schemas — sovereign local copy. Origin: lib/node-schemas/schema.component (shared canonical
-  version, may have moved on independently since this copy was made — sovereignty means emerge does
-  not depend on it at runtime, not that the two can never drift).
-intent: null
-summary: null
-system: emerge
-tags: []
-exported_at: 1789250524205
-source: nexus.lib.node-export
-payload:
-  status: REAL
-  source: >-
-    loom/schema/component.js — COMPONENT_SCHEMA (real, checked directly: requiredKeys
-    ['id','namespace','name','version'], uuid enforced separately by the loom.uuid-present Axiom in
-    driver.js, not duplicated here). emerge's own use: emerge.node-taxonomy.md marks this VIA LOOM —
-    emerge doesn't author .component records itself, capability-map.js derives them from emerge's
-    own real capability registry ('emerge' is confirmed present in capability-map.js's own SYSTEMS
-    map). This local copy exists so emerge can validate/interpret component-shaped data it receives
-    back from that derivation without a runtime dependency on lib/node-schemas.js — same reasoning
-    already applied to this system's other VIA LOOM types (hook/wire/node), which already have local
-    copies; component was the one missed in that earlier pass, found and closed here directly rather
-    than left unnoticed.
-  fields:
-    id:
-      type: string
-      required: true
-      description: real, unique component id
-    namespace:
-      type: string
-      required: true
-      description: real component namespace
-    name:
-      type: string
-      required: true
-      description: real component display/file name
-    version:
-      type: string
-      required: true
-      description: real semver-ish version string
-    dir:
-      type: string
-      required: false
-      description: optional real filesystem path, added by SB1
-    uuid:
-      type: string
-      required: true
-      description: enforced by the loom.uuid-present Axiom, not this schema directly
-    boundary:
-      type: array
-      required: false
-      description: >-
-        optional 1-5 identity-defining invariants for this component, same real concept as
-        cos/kernel.js's Compartment.axioms — what this component IS and is NOT, bounding its scope
-        regardless of what language or syntax it's actually written in. Optional because most real
-        components today declare none; a component using this is opting into being treated like a
-        bounded compartment, not just a named, versioned file.
+{
+  "envelope": 1,
+  "uuid": "nexus-system-template-schema-component",
+  "type": "schema",
+  "id": "component",
+  "context": "copied from the nexus-system template; emerge owns it from here",
+  "intent": "James, 2026-10-05: \"each component only needs to connect to the registry.\" · \"each component has to have at least one capability, with at least one command, and events, each a node each.\" · \"Maybe add, if applicant, data dir with the directory for the data, consumers, intent, data type/system like node, vector, database or table\" · \"maybe create a template or schema from that.\"",
+  "summary": "a component — the unit of code; connects only to the registry",
+  "system": "emerge",
+  "tags": [
+    "system-template"
+  ],
+  "source": "idearium/spec-engine/templates/system",
+  "payload": {
+    "status": "REAL",
+    "fields": {
+      "type": {
+        "type": "string",
+        "required": true,
+        "description": "always \"component\""
+      },
+      "id": {
+        "type": "string",
+        "required": true,
+        "description": "<system>.<component>"
+      },
+      "uuid": {
+        "type": "string",
+        "required": true,
+        "description": ""
+      },
+      "file": {
+        "type": "string",
+        "required": true,
+        "description": "its file, e.g. lib/<component>.js"
+      },
+      "intent": {
+        "type": "string",
+        "required": true,
+        "description": "what it is for, one line"
+      },
+      "version": {
+        "type": "string",
+        "required": true,
+        "description": "additive vs breaking: only the consumers a breaking change reaches are re-checked"
+      },
+      "status": {
+        "type": "string",
+        "required": true,
+        "description": "built | stub | unproven | open"
+      },
+      "capabilities": {
+        "type": "array",
+        "required": true,
+        "description": "capability ids — at least one"
+      },
+      "hooks": {
+        "type": "array",
+        "required": true,
+        "description": "hook ids — its end points"
+      },
+      "consumers": {
+        "type": "array",
+        "required": false,
+        "description": "component ids that use it — read from the wires into its hooks"
+      },
+      "data": {
+        "type": "object",
+        "required": false,
+        "description": "if applicable: { dir, store: node|vector|database|table|file, types: [node types] }"
+      }
+    }
+  }
+}

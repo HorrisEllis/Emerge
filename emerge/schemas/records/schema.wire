@@ -1,0 +1,37 @@
+envelope: 1
+uuid: nexus-export-schema-wire
+type: schema
+id: wire
+context: >-
+  emerge/schemas — sovereign local copy. Origin: lib/node-schemas/schema.wire (shared canonical
+  version, may have moved on independently since this copy was made — sovereignty means emerge does
+  not depend on it at runtime, not that the two can never drift).
+intent: null
+summary: null
+system: emerge
+tags: []
+exported_at: 1789235656679
+source: nexus.lib.node-export
+payload:
+  status: REAL
+  source: >-
+    loom/schema/wire.js — WIRE_SCHEMA (real, enforced). Found genuinely missing this pass: 'wire'
+    was added to KNOWN_TYPES and treated as REAL throughout this session, but no schema.wire file
+    was ever actually created — same real gap as schema.hook.
+  fields:
+    id:
+      type: string
+      required: true
+      description: real wire id
+    from_hook_id:
+      type: string
+      required: true
+      description: real id of the source hook
+    to_hook_id:
+      type: string
+      required: true
+      description: real id of the destination hook
+    uuid:
+      type: string
+      required: true
+      description: enforced by the loom.uuid-present Axiom, not this schema directly

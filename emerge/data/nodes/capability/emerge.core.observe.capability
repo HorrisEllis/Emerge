@@ -1,0 +1,16 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-capa-0000-0000-000000000002",
+  "type": "capability",
+  "id": "emerge.core.observe",
+  "system": "emerge",
+  "summary": "observe the system",
+  "payload": {
+    "component": "emerge.core",
+    "summary": "report the system state: heartbeat, node counts, shape problems, the nodes themselves",
+    "commands": [
+      "emerge.status",
+      "emerge.nodes"
+    ]
+  }
+}

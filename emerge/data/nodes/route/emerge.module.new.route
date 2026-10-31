@@ -1,0 +1,13 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-rout-0000-0000-000000000116",
+  "type": "route",
+  "id": "emerge.module.new",
+  "system": "emerge",
+  "summary": "POST /modules",
+  "payload": {
+    "method": "POST",
+    "path": "/modules",
+    "command": "emerge.module.new"
+  }
+}

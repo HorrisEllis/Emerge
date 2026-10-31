@@ -1,0 +1,15 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-even-0000-0000-000000000005",
+  "type": "event",
+  "id": "emerge.status.reported",
+  "system": "emerge",
+  "summary": "a status report was made",
+  "payload": {
+    "command": "emerge.status",
+    "payload": {
+      "command": "string",
+      "result": "object"
+    }
+  }
+}

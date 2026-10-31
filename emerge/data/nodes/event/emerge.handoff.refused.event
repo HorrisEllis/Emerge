@@ -1,0 +1,15 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-even-0000-0000-000000000110",
+  "type": "event",
+  "id": "emerge.handoff.refused",
+  "system": "emerge",
+  "summary": "a handoff failed verification — nothing moved; the receipt says why",
+  "payload": {
+    "command": "emerge.handoff.send",
+    "payload": {
+      "command": "string",
+      "result": "object"
+    }
+  }
+}
