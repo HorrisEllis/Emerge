@@ -97,6 +97,22 @@ spec:
         - id: node_is_scaffolding
           text: "The existing Node interpreter may run once to produce the first emerge.exe (10.1, stage 0) and is then retired. It is not part of the finished system."
           refs: [s10_build_and_bootstrap.stages]
+        # ADDENDUM 2026-10-31 — who Emerge is for, and the place of AI. DECIDED: James, 2026-10-31, after "What can energe do?" was
+        # answered: "Also it's meant for me. To make coding easy for me using my own language. Ai is additive. Also it's working
+        # towards removing the dependency of ai."
+        - id: for_its_author
+          status: DECIDED
+          text: "Emerge is meant for its author: to make coding easy for him, in his own language. A feature earns its place by making his own coding easier."
+        - id: ai_is_additive
+          status: DECIDED
+          text: "AI is additive. Emerge works without a model; a model may add to what he writes, never stand in for it."
+          refs: [s10_build_and_bootstrap]
+        - id: toward_no_ai_dependency
+          status: DECIDED
+          text: "Emerge is working towards removing the dependency on AI."
+        - id: how_dependency_falls
+          status: PROPOSED
+          text: "The coder's reading, to confirm. What a model does once becomes Emerge's own: a template, a generator, a checker rule or a prelude function, so the same thing never needs a model again. Every path a model can take has a deterministic path beside it (eg gen, the spec compiler's scaffold, the checker), and a model's answer is accepted only through the checker (already so: build-spec's T2 gate)."
         - id: foundation
           status: DECIDED
           decided: 2026-10-28

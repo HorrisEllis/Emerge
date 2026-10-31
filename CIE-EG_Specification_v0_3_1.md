@@ -19,6 +19,14 @@ Emerge is the author's own: the language, the compiler, the runtime and the tool
 3. **Systems are built from Emerge.** A system is written as components, registered in the component registry, connected by roads in the contract, run by the gate, and recorded on the ledger. Systems never reach each other by importing code or by calling over a network. They are reached only through the registry and the gate (principle 1).
 4. **Node is scaffolding at most.** The existing Node interpreter may run once to produce the first `emerge.exe` (10.1, stage 0) and is then retired. It is not part of the finished system.
 
+5. **For its author.** **DECIDED** Emerge is meant for its author: to make coding easy for him, in his own language. A feature earns its place by making his own coding easier.
+6. **AI is additive.** **DECIDED** Emerge works without a model; a model may add to what he writes, never stand in for it.
+7. **Towards no AI dependency.** **DECIDED** Emerge is working towards removing the dependency on AI.
+
+   James, 2026-10-31: "Also it’s meant for me. To make coding easy for me using my own language. Ai is additive. Also it’s working towards removing the dependency of ai."
+
+   *How, the coder's reading* **PROPOSED**: what a model does once becomes Emerge's own (a template, a generator, a checker rule or a prelude function), so the same thing never needs a model again. Every path a model can take has a deterministic path beside it (`eg gen`, the spec compiler's scaffold, the checker), and a model's answer is accepted only through the checker, as build-spec's T2 gate already does.
+
 **Consequences for the rest of this spec** **PROPOSED**
 
 - A feature that only makes sense inside Node is out of scope.
