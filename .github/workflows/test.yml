@@ -39,13 +39,9 @@ jobs:
       - name: emerge — verify
         working-directory: emerge
         run: node verify.js
-      - name: emerge — propagation tests
+      - name: emerge — compiler tests (npm test, the whole suite)
         working-directory: emerge
-        run: node test/propagation.test.js
-
-      - name: emerge — standalone build tests (target, build-spec, core)
-        working-directory: emerge
-        run: node test/target.test.js && node test/build-spec.test.js && node test/core.test.js
+        run: npm test
 
       - name: tests left the checkout clean
         if: always()
@@ -54,6 +50,3 @@ jobs:
           git status --porcelain
           test -z "$(git status --porcelain)"
 
-      # The rest of emerge's npm test (kg, tier-contract, invariants, gap-field, reply-engine)
-      # is not run yet: six of its tests read causal-nexus.spec and runtime.spec, which are not
-      # in the repo, and gap-field expects 8 pipeline events but gets 9.

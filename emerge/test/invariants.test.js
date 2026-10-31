@@ -356,18 +356,18 @@ test('checkPropagation: returns only propagation violations', () => {
   assert(!violations.some(v => v.invariantId === 'INV-001'));
 });
 
-// ── 11. runtime.spec integration ─────────────────────────────────────────────
+// ── 11. cie-eg.spec integration ─────────────────────────────────────────────
 
-test('INV: runtime.spec passes all invariants after build order fix', () => {
+test('INV: cie-eg.spec passes all invariants', () => {
   const yaml = require('js-yaml');
   const fs   = require('fs');
   const { normalizeSpec, sanitizeSpec } = require('../compiler/emit');
-  const raw = fs.readFileSync('./runtime.spec', 'utf-8');
+  const raw = fs.readFileSync(require('path').join(__dirname, '../spec/cie-eg.spec'), 'utf-8');
   let doc; try { doc = yaml.load(raw); } catch(e) { doc = yaml.load(sanitizeSpec(raw)); }
   const { graph } = build(normalizeSpec(doc?.spec ?? doc));
   const r = check(graph);
   assert(r.isValid,
-    `runtime.spec failed invariants: ${r.violations.map(v=>'['+v.invariantId+'] '+v.message).join('; ')}`);
+    `cie-eg.spec failed invariants: ${r.violations.map(v=>'['+v.invariantId+'] '+v.message).join('; ')}`);
 });
 
 // ── Report ────────────────────────────────────────────────────────────────────

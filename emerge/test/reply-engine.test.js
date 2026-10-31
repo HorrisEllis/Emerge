@@ -11,7 +11,7 @@
  *   4. DEFER ≠ BLOCK — deferred nodes have a path to run
  *   5. Pipeline produces exactly 7 events
  *   6. Empty/null inputs never throw
- *   7. Integration: runtime.spec produces all 9 modules in run bucket
+ *   7. Integration: SPEC_COMPILER.spec puts every module in the run bucket
  */
 
 const {
@@ -312,13 +312,13 @@ test('reply: summarize produces readable string', () => {
   assert(s.includes('next:'));
 });
 
-// ── 9. Integration: runtime.spec ─────────────────────────────────────────────
+// ── 9. Integration: SPEC_COMPILER.spec ──────────────────────────────────────────────────────────────────────────────────
 
-test('reply: runtime.spec — all 9 modules in run bucket, none deferred or blocked', () => {
+test('reply: SPEC_COMPILER.spec — every module in run bucket, none deferred or blocked', () => {
   const yaml = require('js-yaml');
   const fs   = require('fs');
   const { normalizeSpec, sanitizeSpec } = require('../compiler/emit');
-  const raw  = fs.readFileSync('./runtime.spec', 'utf-8');
+  const raw  = fs.readFileSync(require('path').join(__dirname, '../SPEC_COMPILER.spec'), 'utf-8');
   let doc; try { doc = yaml.load(raw); } catch(e) { doc = yaml.load(sanitizeSpec(raw)); }
   const { graph }    = build(normalizeSpec(doc?.spec ?? doc));
   const violations   = check(graph);
@@ -326,13 +326,13 @@ test('reply: runtime.spec — all 9 modules in run bucket, none deferred or bloc
   const { field }    = computeGapField(graph, violations);
   const execPlan     = plan(tierMap, field, graph, violations);
 
-  // All 9 module nodes should be in run bucket (fully specced)
+  // Every module node should be in the run bucket (fully specced, no open decisions)
   const moduleNodes  = [...graph.nodes.values()].filter(n => n.kind === 'module');
   assertEqual(execPlan.run.length, moduleNodes.length,
     `expected ${moduleNodes.length} in run, got ${execPlan.run.length}`);
-  assertEqual(execPlan.defer.length,  0, 'no deferrals expected for runtime.spec');
+  assertEqual(execPlan.defer.length,  0, 'no deferrals expected for SPEC_COMPILER.spec');
   assertEqual(execPlan.block.filter(n => n.kind === 'module').length, 0,
-    'no module blocks expected for runtime.spec');
+    'no module blocks expected for SPEC_COMPILER.spec');
   // siso-core should be first (highest blast radius as foundation)
   assert(execPlan.nextNode, 'nextNode should not be null');
   assert(execPlan.run[0].tier === 'T2', 'first run node should be T2');

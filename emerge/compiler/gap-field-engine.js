@@ -573,7 +573,7 @@ function createGapFieldPipeline(logLevel = 'EVENTS') {
 /**
  * computeGapField(graph, violationReport, options) → GapField
  *
- * Synchronous. Runs all 7 gates over the graph state.
+ * Synchronous. Runs all 8 gates over the graph state.
  * Always returns a GapField — never throws.
  *
  * violationReport is optional — pass null if invariants engine not run yet.

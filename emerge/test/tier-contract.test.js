@@ -311,8 +311,8 @@ test('contract thresholds align with KG confidence assignments', () => {
 test('integration: compile() result includes tierMap with correct structure', async () => {
   const { compile } = require('../compiler/pipeline');
   const r = await compile(
-    '/mnt/user-data/uploads/causal-nexus.spec',
-    '/tmp/contract-test-' + Date.now(),
+    require('path').join(__dirname, '../SPEC_COMPILER.spec'),
+    require('path').join(require('os').tmpdir(), 'contract-test-' + Date.now()),
     { skipCortex: true, tier: 1 }
   );
   assert(r.ok, 'compile not ok: ' + r.error);
@@ -338,8 +338,8 @@ asyncJobs.push(
     try {
       const { compile } = require('../compiler/pipeline');
       const r = await compile(
-        '/mnt/user-data/uploads/causal-nexus.spec',
-        '/tmp/contract-test2-' + Date.now(),
+        require('path').join(__dirname, '../SPEC_COMPILER.spec'),
+        require('path').join(require('os').tmpdir(), 'contract-test2-' + Date.now()),
         { skipCortex: true, tier: 1 }
       );
       assert(r.ok);

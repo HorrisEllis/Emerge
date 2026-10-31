@@ -50,11 +50,11 @@ function buildClean(...modules) {
 
 // ── 1. Module structure ───────────────────────────────────────────────────────
 
-test('gap-field: pipeline produces 8 events (build + 7 gates)', () => {
+test('gap-field: pipeline produces 9 events (build + 8 gates)', () => {
   const graph = buildClean(full('A','a'));
   const report = check(graph);
   const { field, log } = computeGapField(graph, report);
-  assertEqual(log.sample().count, 8);
+  assertEqual(log.sample().count, 9);
 });
 
 test('gap-field: always returns a field object, never throws', () => {
@@ -391,19 +391,19 @@ test('baseline: snapshot is immutable (history copy not reference)', () => {
   assertEqual(snap.history.length, histLen, 'snapshot history should not be mutated by later builds');
 });
 
-// ── 11. Integration: runtime.spec ────────────────────────────────────────────
+// ── 11. Integration: cie-eg.spec ────────────────────────────────────────────
 
-test('gap-field: runtime.spec produces 0 gaps (fully specced)', () => {
+test('gap-field: cie-eg.spec produces 0 gaps (fully specced)', () => {
   const yaml = require('js-yaml');
   const fs   = require('fs');
   const { normalizeSpec, sanitizeSpec } = require('../compiler/emit');
-  const raw = fs.readFileSync('./runtime.spec', 'utf-8');
+  const raw = fs.readFileSync(require('path').join(__dirname, '../spec/cie-eg.spec'), 'utf-8');
   let doc; try { doc = yaml.load(raw); } catch(e) { doc = yaml.load(sanitizeSpec(raw)); }
   const { graph } = build(normalizeSpec(doc?.spec ?? doc));
   const report    = check(graph);
   const { field } = computeGapField(graph, report);
-  assertEqual(field.gapCount, 0, `runtime.spec should have 0 gaps, got ${field.gapCount}: ${field.gaps.map(g=>g.type+':'+g.reason).join(', ')}`);
-  assertEqual(field.totalTokenCost, 0, 'runtime.spec token cost should be 0');
+  assertEqual(field.gapCount, 0, `cie-eg.spec should have 0 gaps, got ${field.gapCount}: ${field.gaps.map(g=>g.type+':'+g.reason).join(', ')}`);
+  assertEqual(field.totalTokenCost, 0, 'cie-eg.spec token cost should be 0');
 });
 
 // ── Report ────────────────────────────────────────────────────────────────────
@@ -421,8 +421,8 @@ asyncJobs.push((async () => {
   try {
     const { compile } = require('../compiler/pipeline');
     const r = await compile(
-      require('path').join(__dirname, '../runtime.spec'),
-      '/tmp/compile-integration-' + Date.now(),
+      require('path').join(__dirname, '../spec/cie-eg.spec'),
+      require('path').join(require('os').tmpdir(), 'compile-integration-' + Date.now()),
       { skipCortex: true, tier: 1 }
     );
     assert(r.ok, 'compile not ok: ' + r.error);
@@ -449,8 +449,8 @@ asyncJobs.push((async () => {
   try {
     const { compile } = require('../compiler/pipeline');
     const r = await compile(
-      require('path').join(__dirname, '../runtime.spec'),
-      '/tmp/compile-bo-' + Date.now(),
+      require('path').join(__dirname, '../spec/cie-eg.spec'),
+      require('path').join(require('os').tmpdir(), 'compile-bo-' + Date.now()),
       { skipCortex: true, tier: 1 }
     );
     assert(r.ok && r.buildOrder && r.buildOrder.length > 0, 'no build order');
@@ -458,8 +458,8 @@ asyncJobs.push((async () => {
     assert('tier' in first,      'buildOrder entry missing tier');
     assert('readiness' in first, 'buildOrder entry missing readiness');
     assert('gapCount' in first,  'buildOrder entry missing gapCount');
-    // runtime.spec is fully specced — no gaps in buildOrder
-    assert(r.buildOrder.every(n => n.gapCount === 0), 'runtime.spec should have 0 gaps per node');
+    // cie-eg.spec is fully specced — no gaps in buildOrder
+    assert(r.buildOrder.every(n => n.gapCount === 0), 'cie-eg.spec should have 0 gaps per node');
     p++; process.stdout.write('.');
   } catch(e) { f++; console.log('\nFAIL [' + label + ']: ' + e.message); }
 })());
@@ -469,8 +469,8 @@ asyncJobs.push((async () => {
   try {
     const { compile } = require('../compiler/pipeline');
     const r = await compile(
-      require('path').join(__dirname, '../runtime.spec'),
-      '/tmp/compile-rec-' + Date.now(),
+      require('path').join(__dirname, '../spec/cie-eg.spec'),
+      require('path').join(require('os').tmpdir(), 'compile-rec-' + Date.now()),
       { skipCortex: true, tier: 1 }
     );
     assert(r.ok);

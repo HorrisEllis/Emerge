@@ -107,8 +107,16 @@ function show(v, nested = false) {
   return String(v);
 }
 
-/** JSON.stringify replacer: a 64-bit int is written as a plain JSON number, exactly */
-const jsonBig = (k, v) => (typeof v === 'bigint' ? (JSON.rawJSON ? JSON.rawJSON(String(v)) : String(v)) : v);
+/** JSON.stringify where a 64-bit int is written as a plain JSON number, exactly. JSON.rawJSON does it on Node 21+;
+ *  before that the int goes out as a tagged string and the tag is unwrapped after (the tag carries a fresh nonce, so
+ *  no string in the data can match it). */
+function stringifyBig(v, indent) {
+  if (JSON.rawJSON) return JSON.stringify(v, (k, x) => (typeof x === 'bigint' ? JSON.rawJSON(String(x)) : x), indent);
+  const tag = `\u0000int${Math.random().toString(36).slice(2)}:`;
+  const out = JSON.stringify(v, (k, x) => (typeof x === 'bigint' ? tag + x : x), indent);
+  const quoted = JSON.stringify(tag).slice(1, -1).replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+  return out.replace(new RegExp(`"${quoted}(-?\\d+)"`, 'g'), '$1');
+}
 
 // mulberry32 — the same generator as emerge/core/seed.js, with its position exposed so whatif can restore it.
 function createRng(seed) {
@@ -1067,7 +1075,7 @@ function createRuntime(opts = {}) {
   def('trim', 1, s => needStr(s, 'trim').trim());
   def('replace', 3, (s, a, b) => needStr(s, 'replace').split(needStr(a, 'replace')).join(needStr(b, 'replace')));
   def('type_of', 1, v => typeOf(v));
-  def('json', 1, v => JSON.stringify(toData(v, 'json'), jsonBig));
+  def('json', 1, v => stringifyBig(toData(v, 'json')));
   def('parse_json', 1, s => {
     let v;
     try { v = JSON.parse(needStr(s, 'parse_json')); } catch (e) { err(`parse_json: ${e.message}`); }
@@ -1356,7 +1364,7 @@ function parseRunArgs(argv) {
 }
 
 function finishRun(rt, opts, code) {
-  if (opts.ledger) fs.writeFileSync(opts.ledger, JSON.stringify(rt.world.ledger, jsonBig, 2) + '\n');
+  if (opts.ledger) fs.writeFileSync(opts.ledger, stringifyBig(rt.world.ledger, 2) + '\n');
   return code;
 }
 

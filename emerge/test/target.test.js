@@ -94,7 +94,7 @@ test('Emerge target: .eg files only, every file passes the checker', async () =>
   const spec = egSpec([MOD({ build: { state: 'not_built', file: 'lib/alpha.eg' } })], [SCHEMA]);
   const g = build(spec, { logLevel: 'SILENT' }).graph;
   await emitT0(spec, out); const r = await emitT1(spec, g, out);
-  const files = walk(out).map(x => path.relative(out, x)).sort();
+  const files = walk(out).map(x => path.relative(out, x).split(path.sep).join('/')).sort();
   eq(JSON.stringify(files), JSON.stringify(['lib/alpha.eg', 'lib/alpha.test.eg']));
   for (const x of files) {
     const src = fs.readFileSync(path.join(out, x), 'utf8');

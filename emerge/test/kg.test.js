@@ -161,16 +161,16 @@ test('KG: getGaps returns sorted by impact desc', () => {
   for (let i=1;i<gaps.length;i++) assert(gaps[i-1].impact >= gaps[i].impact, 'gaps not sorted');
 });
 
-// ── causal-nexus.spec integration ────────────────────────────────────────────
-test('KG: causal-nexus.spec builds without error', () => {
-  const raw  = fs.readFileSync('/mnt/user-data/uploads/causal-nexus.spec', 'utf-8');
+// ── SPEC_COMPILER.spec integration ────────────────────────────────────────────
+test('KG: SPEC_COMPILER.spec builds without error', () => {
+  const raw  = fs.readFileSync(require('path').join(__dirname, '../SPEC_COMPILER.spec'), 'utf-8');
   const doc  = yaml.load(raw);
   const spec = doc.spec;
   const mods = Object.entries(spec.modules).map(([k,v]) => ({ name:k, id:v.id??k, ...v }));
   const r    = build({ ...spec, modules: mods });
   assert(r.ok);
   assert(r.graph.meta.nodeCount > 0);
-  assertEqual(r.graph.meta.blackCount, 0); // causal-nexus has no undeclared refs
+  assertEqual(r.graph.meta.blackCount, 0); // SPEC_COMPILER.spec has no undeclared refs
 });
 
 // ── Chunk integration ─────────────────────────────────────────────────────────
@@ -187,7 +187,7 @@ test('KG: getChunk() returns valid chunk within token budget', () => {
 // ── Pipeline: compile() now returns graph ────────────────────────────────────
 test('KG: compile() result includes graph', async () => {
   const { compile } = require('../compiler/pipeline');
-  const r = await compile('/mnt/user-data/uploads/causal-nexus.spec', '/tmp/kg-test-'+Date.now(), {
+  const r = await compile(require('path').join(__dirname, '../SPEC_COMPILER.spec'), require('path').join(require('os').tmpdir(), 'kg-test-' + Date.now()), {
     skipCortex: true, tier: 1,
   });
   assert(r.ok);
