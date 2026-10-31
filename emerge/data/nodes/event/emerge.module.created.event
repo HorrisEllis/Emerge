@@ -1,0 +1,15 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-even-0000-0000-000000000112",
+  "type": "event",
+  "id": "emerge.module.created",
+  "system": "emerge",
+  "summary": "a module was laid out from the template",
+  "payload": {
+    "command": "emerge.module.new",
+    "payload": {
+      "command": "string",
+      "result": "object"
+    }
+  }
+}

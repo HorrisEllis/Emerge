@@ -1,0 +1,21 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-lang-comp-0000-0000-2026-1031-000000000001",
+  "type": "component",
+  "id": "emerge.lang",
+  "system": "emerge",
+  "summary": "the language through the door",
+  "payload": {
+    "file": "lib/lang.js",
+    "intent": "Emerge's language served through the system's door: check, run, test, build, say and synth, each the eg command line in a child process",
+    "version": "1.0.0",
+    "status": "built",
+    "capabilities": [
+      "emerge.lang.code"
+    ],
+    "hooks": [
+      "emerge.core.http"
+    ],
+    "consumers": []
+  }
+}

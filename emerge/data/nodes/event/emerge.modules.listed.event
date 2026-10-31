@@ -1,0 +1,15 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-even-0000-0000-000000000113",
+  "type": "event",
+  "id": "emerge.modules.listed",
+  "system": "emerge",
+  "summary": "the modules were listed",
+  "payload": {
+    "command": "emerge.modules",
+    "payload": {
+      "command": "string",
+      "result": "object"
+    }
+  }
+}

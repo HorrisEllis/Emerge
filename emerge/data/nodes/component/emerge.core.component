@@ -1,0 +1,21 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-comp-0000-0000-000000000001",
+  "type": "component",
+  "id": "emerge.core",
+  "system": "emerge",
+  "summary": "the core component",
+  "payload": {
+    "file": "lib/core.js",
+    "intent": "the system reporting on itself: its status and its nodes",
+    "version": "0.1.0",
+    "status": "built",
+    "capabilities": [
+      "emerge.core.observe"
+    ],
+    "hooks": [
+      "emerge.core.http"
+    ],
+    "consumers": []
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-lang-capa-0000-0000-2026-1031-000000000002",
+  "type": "capability",
+  "id": "emerge.lang.code",
+  "system": "emerge",
+  "summary": "code in Emerge",
+  "payload": {
+    "component": "emerge.lang",
+    "summary": "check, run, test and build Emerge, turn his words into Emerge, and derive code from a spec, with no model",
+    "commands": [
+      "emerge.lang.check",
+      "emerge.lang.run",
+      "emerge.lang.test",
+      "emerge.lang.build",
+      "emerge.lang.say",
+      "emerge.lang.synth"
+    ]
+  }
+}

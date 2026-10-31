@@ -1,0 +1,44 @@
+{
+  "envelope": 1,
+  "uuid": "nexus-system-template-schema-module",
+  "type": "schema",
+  "id": "module",
+  "context": "copied from the nexus-system template; emerge owns it from here",
+  "intent": "James, 2026-10-12: \"nexus is recursive, builds itself, using itself. the same architecture on every level.\" · \"each module in nexus is a system with its own modules.\"",
+  "summary": "a module of this system — itself a system, laid out from the template",
+  "system": "emerge",
+  "tags": [
+    "system-template"
+  ],
+  "source": "idearium/spec-engine/templates/system",
+  "payload": {
+    "status": "REAL",
+    "fields": {
+      "system": {
+        "type": "string",
+        "required": true,
+        "description": "the module's own system name (its contract id)"
+      },
+      "dir": {
+        "type": "string",
+        "required": true,
+        "description": "where it lives, relative to this system (modules/<slug>)"
+      },
+      "mode": {
+        "type": "string",
+        "required": true,
+        "description": "how it runs: library (in this process) · process (its own port) · on-demand"
+      },
+      "contractHash": {
+        "type": "string",
+        "required": true,
+        "description": "its interaction contract's hash when it was registered; a change shows in the handshake"
+      },
+      "files": {
+        "type": "number",
+        "required": false,
+        "description": "how many files the template laid out"
+      }
+    }
+  }
+}

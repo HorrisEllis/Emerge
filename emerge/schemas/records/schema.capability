@@ -1,0 +1,94 @@
+envelope: 1
+uuid: nexus-export-schema-capability
+type: schema
+id: capability
+context: >-
+  emerge/schemas — sovereign local copy. Origin: lib/node-schemas/schema.capability (shared
+  canonical version, may have moved on independently since this copy was made — sovereignty means
+  emerge does not depend on it at runtime, not that the two can never drift).
+intent: null
+summary: null
+system: emerge
+tags: []
+exported_at: 1789235656678
+source: nexus.lib.node-export
+payload:
+  status: REAL
+  source: >-
+    guardian/registry-components.js — the real _c() helper's output shape, one real object per
+    registered route/capability. `intent` promoted to a required top-level field this pass, per the
+    real precedent already sitting in job.dispatch's own record: `hooks.in: [{
+    id:'guardian.job.dispatch.receive', intent:['build','ask','forge','compile'], ... }]` — that
+    array already exists in real code, just nested and optional (hooks defaults to {}). No other
+    real capability record in registry-components.js currently sets it, so most existing rows would
+    need a real intent list backfilled to satisfy this as REQUIRED, not just a schema-level promise.
+  fields:
+    id:
+      type: string
+      required: true
+      description: real, namespaced id — '<namespace>.<name>', e.g. 'guardian.health'
+    namespace:
+      type: string
+      required: true
+      description: real system namespace, e.g. 'guardian'
+    name:
+      type: string
+      required: true
+      description: real capability name within the namespace
+    version:
+      type: string
+      required: true
+      description: real version string, e.g. '3.6.2' — sourced from the file's own version const
+    grammar:
+      type: array
+      required: true
+      description: >-
+        real natural-language trigger phrases for this capability, defaults to [name-with-spaces,
+        name-with-dashes] if not given explicitly
+    route:
+      type: object
+      required: true
+      description: >-
+        real {method, path} — the actual HTTP route this capability maps to. This IS the
+        capability→.command link: identical shape to schema.command's own {method, path}, always
+        present, so "maps to at least one .command" already holds structurally for every real row.
+    intent:
+      type: array
+      required: true
+      description: >-
+        real intent-verb list this capability serves, e.g. ['build','ask','forge','compile'] — the
+        capability→.intent link. Promoted from job.dispatch's own real (but optional, nested)
+        hooks.in[].intent to a required top-level field, per this pass's own instruction.
+        checkPayload only checks presence + typeof here, NOT non-empty — see §KNOWN GAP below.
+    description:
+      type: string
+      required: true
+      description: real, human-readable description of what this capability does
+    params:
+      type: array
+      required: false
+      description: real declared parameters, defaults to []
+    tags:
+      type: array
+      required: true
+      description: real tags, always includes the namespace itself plus any caller-supplied tags
+    permissions:
+      type: array
+      required: false
+      description: real required permissions, defaults to ['system']
+    hooks:
+      type: object
+      required: false
+      description: >-
+        real associated hook references, defaults to {} — the original, nested home of intent[],
+        kept for backward compatibility
+    events:
+      type: array
+      required: false
+      description: >-
+        §NOT GROUNDED — no real capability record anywhere in the codebase currently declares which
+        .event(s) it emits. Left optional and unenforced deliberately: marking this required would
+        mean inventing a shape with no real construction site to check it against, which breaks this
+        registry's own grounding rule. A real per-capability event-emission list (e.g. registry-
+        components.js's _c() gaining an `events:` opt, mirroring how `hooks.in[].intent` already
+        works) would need to exist in real code before this can honestly be REQUIRED.

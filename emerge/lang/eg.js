@@ -29,7 +29,7 @@ const USAGE = `emerge ${lang.VERSION} — the Emerge language
   eg map [--out MAP.md]                                       the language map: every keyword, primitive, builtin
   eg repl                                                     interactive; an expression prints its value
   eg components <file.eg> [--out graph.json]                  export components, hooks and wires as loom records,
-                                                              validated against emerge/schemas/schema.component|hook|wire
+                                                              validated against emerge/schemas/records/schema.component|hook|wire
   eg bootstrap [--strict | --status | --rollback]             rebuild the language from lang/core/*.eg (primitives,
                                                               prelude, selftest): quarantine → prove → integrate
   eg native <file.eg> [-o out]                                compile Emerge to a Linux x86-64 executable with the self-hosted

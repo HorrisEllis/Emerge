@@ -1,0 +1,16 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-capa-0000-0000-000000000104",
+  "type": "capability",
+  "id": "emerge.modules.nest",
+  "system": "emerge",
+  "summary": "nest systems",
+  "payload": {
+    "component": "emerge.modules",
+    "summary": "lay out a module (a whole system) from this system's template; list the modules with their contracts checked",
+    "commands": [
+      "emerge.module.new",
+      "emerge.modules"
+    ]
+  }
+}

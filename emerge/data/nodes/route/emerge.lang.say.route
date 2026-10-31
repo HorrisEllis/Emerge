@@ -1,0 +1,13 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-lang-rout-0005-0000-2026-1031-000000000004",
+  "type": "route",
+  "id": "emerge.lang.say",
+  "system": "emerge",
+  "summary": "POST /lang/say",
+  "payload": {
+    "method": "POST",
+    "path": "/lang/say",
+    "command": "emerge.lang.say"
+  }
+}

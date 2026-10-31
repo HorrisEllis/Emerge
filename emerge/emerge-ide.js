@@ -273,7 +273,7 @@ server.listen(PORT, () => {
   // Register with orchestrator
   try {
     const http = require('http');
-    let _rc = []; try { _rc = require('./registry-components'); } catch(_) {}
+    let _rc = []; try { _rc = require('./ide-registry'); } catch(_) {}
     const body = JSON.stringify({ systemId:'emerge', port:PORT, version:'1.0.0', components:_rc });
     const req = http.request({ hostname:'127.0.0.1', port:9000, path:'/api/register', method:'POST',
       headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}, timeout:3000

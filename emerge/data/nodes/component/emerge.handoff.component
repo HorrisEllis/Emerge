@@ -1,0 +1,19 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-comp-0000-0000-000000000101",
+  "type": "component",
+  "id": "emerge.handoff",
+  "system": "emerge",
+  "summary": "the handoff component",
+  "payload": {
+    "file": "lib/handoff.js",
+    "intent": "work moves between systems as a file: verified by the registry and the handshake, then moved to the target's input/; its state is the folder it is in",
+    "version": "0.1.0",
+    "status": "built",
+    "capabilities": [
+      "emerge.handoff.move"
+    ],
+    "hooks": [],
+    "consumers": []
+  }
+}

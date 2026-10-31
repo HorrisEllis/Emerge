@@ -1,0 +1,19 @@
+{
+  "envelope": 1,
+  "uuid": "a0a7dcd2-comp-0000-0000-000000000102",
+  "type": "component",
+  "id": "emerge.modules",
+  "system": "emerge",
+  "summary": "the modules component",
+  "payload": {
+    "file": "lib/modules.js",
+    "intent": "a module is a system: the skeleton laid out again one level down, from this system's own template",
+    "version": "0.1.0",
+    "status": "built",
+    "capabilities": [
+      "emerge.modules.nest"
+    ],
+    "hooks": [],
+    "consumers": []
+  }
+}

@@ -3,7 +3,7 @@
 // component_id: emerge.lang.components · spec: emerge/lang/emerge-lang.spec (components)
 //
 // One definition of how a component, its hooks and its wires become records, used by the runtime (components()
-// builtin) and by `eg components` (static export). Record shapes follow emerge/schemas/schema.component, schema.hook
+// builtin) and by `eg components` (static export). Record shapes follow emerge/schemas/records/schema.component, schema.hook
 // and schema.wire; validateRecords() reads the required fields from those files, so if the schemas move the export
 // fails loudly instead of drifting.
 
@@ -114,8 +114,8 @@ function graphOfProgram(program) {
   return g;
 }
 
-/** required fields of emerge/schemas/schema.<type>, read from the schema file itself */
-function requiredFields(type, schemasDir = path.join(__dirname, '..', 'schemas')) {
+/** required fields of emerge/schemas/records/schema.<type>, read from the schema file itself */
+function requiredFields(type, schemasDir = path.join(__dirname, '..', 'schemas', 'records')) {
   const file = path.join(schemasDir, `schema.${type}`);
   const lines = fs.readFileSync(file, 'utf8').split('\n');
   const start = lines.findIndex(l => /^\s{2}fields:\s*$/.test(l));
