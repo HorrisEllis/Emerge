@@ -42,6 +42,9 @@ jobs:
       - name: emerge — compiler tests (npm test, the whole suite)
         working-directory: emerge
         run: npm test
+      - name: emerge — the system (genesis skeleton, the language through its door)
+        working-directory: emerge
+        run: npm run test:system
       - name: learn — every lesson, interpreted, compiled, and eg say (docs/learn/verify.js)
         run: node docs/learn/verify.js
 

@@ -1,13 +1,13 @@
 {
   "name": "spec-compiler",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "description": "Compress intent. Decompress deterministically. Pay tokens once.",
   "type": "commonjs",
   "main": "compiler/pipeline.js",
   "scripts": {
     "start": "node server.js",
     "cli": "node cli.js",
-    "test:system": "node tests/skeleton.test.js",
+    "test:system": "node tests/skeleton.test.js && node tests/lang-door.test.js",
     "compile": "node compiler/pipeline.js",
     "verify": "node verify.js",
     "test": "node test/propagation.test.js && node test/kg.test.js && node test/tier-contract.test.js && node test/invariants.test.js && node test/gap-field.test.js && node test/reply-engine.test.js && node test/observe.test.js && node test/debug.test.js && node test/target.test.js && node test/build-spec.test.js && node test/core.test.js",

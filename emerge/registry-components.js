@@ -46,8 +46,24 @@ module.exports = {
       data: { dir: 'modules', store: 'node', types: ['module'] },
     },
     // ── the idea's components slot in below ──
+    // the language through the door (EAS2, Nexus docs/emerge-system.spec MOD-EAS-LANG-DOOR): POST /lang/check|run|test|build|say|synth
+    {
+      type: 'component',
+      id: 'emerge.lang',
+      uuid: 'emerge-lang-comp-0000-0000-2026-1031-000000000001',
+      file: 'lib/lang.js',
+      intent: "Emerge's language served through the system's door: check, run, test, build, say and synth, each the eg command line in a child process",
+      version: '1.0.0',
+      status: 'built',
+      capabilities: ['emerge.lang.code'],
+      hooks: ['emerge.core.http'],
+      consumers: [],
+      data: { dir: 'a fresh temp folder per call, removed after', store: 'file', types: [] },
+    },
   ],
   // the events a person should see, declared here so the UI reads them from the contract and keeps no list of its own
   // (James, 2026-10-17: "making the ui disposable, soveriegn"): [{ event: 'emerge.x.done', level: 'ok'|'warn'|'err', text }]
-  toasts: [],
+  toasts: [
+    { event: 'emerge.lang.built', level: 'ok', text: 'Emerge built' },
+  ],
 };

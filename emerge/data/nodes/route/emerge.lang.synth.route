@@ -1,0 +1,13 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-lang-rout-0006-0000-2026-1031-000000000004",
+  "type": "route",
+  "id": "emerge.lang.synth",
+  "system": "emerge",
+  "summary": "POST /lang/synth",
+  "payload": {
+    "method": "POST",
+    "path": "/lang/synth",
+    "command": "emerge.lang.synth"
+  }
+}

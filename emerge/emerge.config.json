@@ -2,6 +2,13 @@
   "system": "emerge",
   "port": 4900,
   "heartbeatMs": 30000,
-  "listener": { "pollMs": 2000 },
-  "versionium": { "url": null }
+  "listener": {
+    "pollMs": 2000
+  },
+  "versionium": {
+    "url": null
+  },
+  "lang": {
+    "timeoutMs": 20000
+  }
 }

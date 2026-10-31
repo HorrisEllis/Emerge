@@ -1,0 +1,15 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-lang-even-0005-0000-2026-1031-000000000005",
+  "type": "event",
+  "id": "emerge.lang.said",
+  "system": "emerge",
+  "summary": "emerge.lang.say answered",
+  "payload": {
+    "command": "emerge.lang.say",
+    "payload": {
+      "command": "string",
+      "result": "object"
+    }
+  }
+}
