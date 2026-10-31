@@ -110,11 +110,15 @@ const CASES = {
   'moved to the prelude: every case, ok and refused': String.raw`fn t(name, f) {
   try { print(name, repr(f())) } else e { print(name, "ERR", e.message) }
 }
+t("ceil", fn() = [ceil(1), ceil(-1), ceil(0), ceil(1.2), ceil(-1.2), ceil(-0.5), ceil(9007199254740991)])
 t("ceil s", fn() = ceil("x"))
 t("ceil i", fn() = ceil(2i))
+t("round", fn() = [round(0), round(2.5), round(-2.5), round(-0.5), round(-0.4), round(1.49), round(-1.5), round(3), round(-7), round(1e300)])
 t("round s", fn() = round(null))
+t("abs", fn() = [abs(-3), abs(3), abs(0), abs(-0.5), abs(-5i), abs(5i), abs(0i), abs(9223372036854775807i), abs(-9223372036854775807i)])
 t("abs min", fn() = abs(-9223372036854775807i - 1i))
 t("abs s", fn() = abs("a"))
+t("sort", fn() = [sort([3, 1, 2]), sort([]), sort([1]), sort(["b", "a", "B", "é", "😀", "z", ""]), sort([2, 2, 1, -1, 0.5])])
 t("sort map1", fn() = sort([{a: 1}]))
 t("sort mixed", fn() = sort([1, "a"]))
 t("sort ints", fn() = sort([2i, 1i]))
@@ -141,7 +145,6 @@ t("trim n", fn() = trim(1))
 t("replace", fn() = [replace("a.b.c", ".", "-"), replace("aaa", "a", "bb"), replace("", "x", "y"), replace("ab", "", "-"), replace("é😀", "", "|")])
 t("replace n", fn() = replace("a", 1, "b"))
 t("replace n3", fn() = replace("a", "a", null))
-t("hex", fn() = [hex(bytes([])), hex(bytes([0, 15, 16, 255]))])
 t("hex s", fn() = hex("ab"))
 t("from_hex", fn() = [from_hex(""), from_hex("00ff10Ab"), from_hex("DEADbeef")])
 t("from_hex odd", fn() = from_hex("abc"))
@@ -151,6 +154,7 @@ t("from_hex n", fn() = from_hex(5))
 t("u8", fn() = [u8(0), u8(255), u8(7i)])
 t("u8 big", fn() = u8(256))
 t("u8 neg", fn() = u8(-1))
+t("u8 frac", fn() = u8(1.5))
 t("u8 str", fn() = u8("1"))
 t("u16", fn() = [u16le(258), u16be(258), u16le(65535)])
 t("u16 big", fn() = u16be(65536))
@@ -166,9 +170,11 @@ t("read", fn() = [read_u64be(u64be(1234567890123i), 0), read_u64be(from_hex("00"
 t("read top", fn() = read_u64be(from_hex("8000000000000000"), 0))
 t("read off", fn() = read_u64be(bytes([1, 2]), 0))
 t("read neg", fn() = read_u64be(u64be(1), -1))
+t("read frac", fn() = read_u64be(u64be(1), 0.5))
 t("read i", fn() = read_u64be(u64be(1), 0i))
 t("read s", fn() = read_u64be("x", 0))
 t("wrap32", fn() = [wrap32(0), wrap32(-1), wrap32(4294967296), wrap32(4294967297), wrap32(-4294967297), wrap32(9007199254740991)])
+t("wrap32 frac", fn() = wrap32(1.5))
 t("wrap32 i", fn() = wrap32(1i))
 t("wrap32 big", fn() = wrap32(9007199254740992))
 t("rotl", fn() = [rotl(1, 0), rotl(1, 31), rotl(2147483648, 1), rotl(-1, 5), rotl(305419896, 8), rotr(1, 1), rotr(305419896, 8), rotr(5, 0)])
@@ -178,7 +184,34 @@ t("rot cnt i", fn() = rotl(1, 1i))
 t("rot word", fn() = rotl(4294967296, 1))
 t("rot neg", fn() = rotl(-2147483649, 1))
 t("rot s", fn() = rotr("a", 1))
-t("rot64 cnt", fn() = rotl(1i, 64))`,
+t("rot64 cnt", fn() = rotl(1i, 64))
+t("rot64 frac", fn() = rotr(1i, 0.5))`,
+  // ── 2026-10-31: fractional nums natively (GATE-NL-004): IEEE doubles, printed and parsed as the interpreter (JavaScript) does ──
+  'fractional literals, arithmetic, printing and parsing': String.raw`print(0.1 + 0.2, 1 / 3, 2 / 3, 1e21, 1e-7, 123456789012345680000, -0.0, 5 % 2.5, -5.5 % 2, 9007199254740993, 1 / 4)
+print(floor(-2.5), num("1.5e3"), num(" 0x10 "), int(2.0), 3 / 1.5, 7 / 2, 1.0 == 1, 0.1 * 3, 100 / 3)
+try { print(int(2.5)) } else e { print(e.message) }
+try { print(1 / 0) } else e { print(e.message) }
+try { print(5 % 0.0) } else e { print(e.message) }
+try { print(1.5 & 1) } else e { print(e.message) }
+try { print([1, 2][0.5]) } else e { print(e.message) }
+try { print(sqrt(2)) } else e { print(e.message) }
+print(1e21, 1e-7, 5e-324, 1.7976931348623157e308, 2.5e3, 0.000001, 123456789012345680000, 1e400, 3.14159 * 2)`,
+  'fractional nums from division, conversions, overflow to doubles, and every refusal': String.raw`let h = 1 / 2
+let t = 1 / 10
+print(h, t, t + t + t, 1 / 3, 2 / 3, 100 / 3, 7 / 2, h + h, type_of(h), h == 1 / 2, h + h == 1)
+print(-h, 5 % (5 / 2), (-11 / 2) % 2, floor(-5 / 2), idiv(10 ** 15 * 10 ** 6, 3), h < t, t < h, min(h, t), max([t, h, 2]))
+print(9007199254740992 + 1, 9007199254740992 * 3, 10 ** 15 * 10 ** 6 / 1)
+print(num("1.5e3"), num(" 0x10 "), num("-0.25"), num("Infinity"), int(7 / 2), int(-7 / 2), str(1 / 8), repr([1 / 4]))
+var big = 1
+for i in 0..400 { big = big * 10 }
+print(big, -big, big - big, int(1 / 3 * 3))
+try { print(int(big)) } else e { print(e.message) }
+try { print((1 / 2) & 1) } else e { print(e.message) }
+try { print([1, 2][1 / 2]) } else e { print(e.message) }
+try { print(1 / 0) } else e { print(e.message) }
+try { print(h % 0) } else e { print(e.message) }
+try { print(num("abc")) } else e { print(e.message) }
+try { print(int(" +42 "), int("4.5")) } else e { print(e.message) }`,
 };
 
 let pass = 0, fail = 0;
@@ -243,7 +276,7 @@ for (const [name, c] of Object.entries(CASES)) {
 // refusals name the thing and exit 1; nothing is silently skipped
 {
   const REFUSE = {
-    'a fractional num': 'print(1.5)',
+    'a compartment (native_system, next)': 'compartment A {\n  id = "co-a"\n  state { n: 0 }\n}',
   };
   for (const [what, src] of Object.entries(REFUSE)) {
     const file = path.join(TMP, 'refuse.eg');

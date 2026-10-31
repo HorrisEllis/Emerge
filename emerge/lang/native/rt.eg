@@ -50,6 +50,7 @@ let K_MAP = 3
 let K_BYTES = 4
 let K_INT = 5
 let K_FN = 6
+let K_FLT = 7          // a fractional num: [K_FLT][64-bit IEEE pattern]
 let NUM_MAX = 9007199254740992
 let SMALL_MAX = 1152921504606846976i      // 2^60: an int literal, so the value is exact everywhere
 
@@ -159,8 +160,18 @@ fn rt_is_num(v) { return (v & 7) == 1 }
 fn rt_is_int(v) { return (v & 7) == 3 or rt_kind(v) == K_INT }
 fn rt_is_str(v) { return rt_kind(v) == K_STR }
 fn rt_mknum(x) {
-  if x > NUM_MAX or x < 0 - NUM_MAX { rt_unsupported("a num beyond 2^53") }
+  if x > NUM_MAX or x < 0 - NUM_MAX { return rt_fbox(f_of_int(x)) }
   return x * 8 + 1
+}
+// a num that is not the small form: both nums, at least one boxed
+fn rt_fl2(a, b) { return rt_isnum(a) and rt_isnum(b) }
+fn rt_f2(op, a, b) {
+  let x = rt_fbits(a)
+  let y = rt_fbits(b)
+  if op == 0 { return rt_fnum(f_add(x, y)) }
+  if op == 1 { return rt_fnum(f_sub(x, y)) }
+  if op == 2 { return rt_fnum(f_mul(x, y)) }
+  return rt_fnum(f_div(x, y))
 }
 fn rt_numval(v) { return v >> 3 }
 fn rt_mkint(x) {
@@ -186,6 +197,7 @@ fn rt_type_name(v) {
   if k == K_MAP { return "map" }
   if k == K_BYTES { return "bytes" }
   if k == K_INT { return "int" }
+  if k == K_FLT { return "num" }
   return "fn"
 }
 
@@ -392,6 +404,7 @@ fn rt_show_into(b, v, nested) {
   if v == FALSE { return rt_sb_str(b, "false") }
   let k = mem_get(v)
   if k == K_INT { return rt_sb_dec(b, mem_get(v + 8)) }
+  if k == K_FLT { return rt_sb_double(b, mem_get(v + 8)) }
   if k == K_STR {
     if nested { return rt_sb_json(b, v) }
     return rt_sb_str(b, v)
@@ -695,7 +708,8 @@ fn rt_add(a, b) {
     if add_ovf(x, y) { rt_ovf("+") }
     return rt_mkint(x + y)
   }
-  if (rt_is_int(a) and (b & 7) == 1) or ((a & 7) == 1 and rt_is_int(b)) { rt_mixed("+", a, b) }
+  if (rt_is_int(a) and rt_isnum(b)) or (rt_isnum(a) and rt_is_int(b)) { rt_mixed("+", a, b) }
+  if rt_fl2(a, b) { return rt_f2(0, a, b) }
   let ka = rt_kind(a)
   let kb = rt_kind(b)
   if ka == K_STR { return rt_concat(a, rt_tostr(b)) }
@@ -747,13 +761,14 @@ fn rt_sub(a, b) {
     if sub_ovf(x, y) { rt_ovf("-") }
     return rt_mkint(x - y)
   }
+  if rt_fl2(a, b) { return rt_f2(1, a, b) }
   return rt_num_or_int_error("-", a, b)
 }
 fn rt_mul(a, b) {
   if (a & 7) == 1 and (b & 7) == 1 {
     let x = a >> 3
     let y = b >> 3
-    if mul_ovf(x, y) { rt_unsupported("a num beyond 2^53") }
+    if mul_ovf(x, y) { return rt_fnum(f_mul(f_of_int(x), f_of_int(y))) }
     return rt_mknum(x * y)
   }
   if rt_is_int(a) and rt_is_int(b) {
@@ -762,12 +777,13 @@ fn rt_mul(a, b) {
     if mul_ovf(x, y) { rt_ovf("*") }
     return rt_mkint(x * y)
   }
+  if rt_fl2(a, b) { return rt_f2(2, a, b) }
   return rt_num_or_int_error("*", a, b)
 }
 fn rt_num_pow(a, b) {
   let x = a >> 3
   var y = b >> 3
-  if y < 0 { return rt_unsupported("a fractional num") }
+  if y < 0 { return rt_unsupported("** with a fractional num") }
   var r = 1
   while y > 0 {
     if mul_ovf(r, x) { rt_unsupported("a num beyond 2^53") }
@@ -781,10 +797,14 @@ fn rt_div(a, b) {
     let x = a >> 3
     let y = b >> 3
     if y == 0 { rt_fail("division by zero") }
-    if x % y != 0 { rt_unsupported("a fractional num") }
+    if x % y != 0 { return rt_fnum(f_div(f_of_int(x), f_of_int(y))) }
     return rt_mknum(x / y)
   }
   if rt_is_int(a) and rt_is_int(b) { rt_fail("int / int is refused: use idiv(a, b)") }
+  if rt_fl2(a, b) {
+    if b == 1 { rt_fail("division by zero") }
+    return rt_f2(3, a, b)
+  }
   return rt_num_or_int_error("/", a, b)
 }
 fn rt_floor_div(x, y) {
@@ -809,6 +829,12 @@ fn rt_mod(a, b) {
     if y == 0 { rt_fail("modulo by zero") }
     return rt_mkint(rt_floor_mod(rt_intval(a), y))
   }
+  if rt_fl2(a, b) {
+    // the interpreter's ((a % b) + b) % b, with % as JavaScript's (fmod)
+    if b == 1 { rt_fail("modulo by zero") }
+    let y = rt_fbits(b)
+    return rt_fnum(rt_fmod(f_add(rt_fmod(rt_fbits(a), y), y), y))
+  }
   return rt_num_or_int_error("%", a, b)
 }
 fn rt_idiv(a, b) {
@@ -827,10 +853,26 @@ fn rt_idiv(a, b) {
     if y == 0 { rt_fail("division by zero") }
     return rt_mknum(rt_floor_div(a >> 3, y))
   }
+  if rt_fl2(a, b) {
+    // nums must be whole (a double beyond 2^53 is): Math.floor(a / b), as the interpreter
+    let x = rt_fbits(a)
+    let y = rt_fbits(b)
+    if not rt_f_whole(x) or not rt_f_whole(y) {
+      let sb = rt_sb_new()
+      rt_sb_str(sb, "idiv needs two ints, got num ")
+      rt_show_into(sb, a, 1)
+      rt_sb_str(sb, " and num ")
+      rt_show_into(sb, b, 1)
+      return rt_die_lit(rt_sb_done(sb))
+    }
+    if b == 1 { rt_fail("division by zero") }
+    return rt_fnum(rt_f_floor(f_div(x, y)))
+  }
   return rt_num_or_int_error("idiv", a, b)
 }
 fn rt_neg(a) {
   if (a & 7) == 1 { return rt_mknum(0 - (a >> 3)) }
+  if rt_is_flt(a) { return rt_fbox(mem_get(a + 8) ^ rt_sign_bit()) }
   if rt_is_int(a) {
     let x = rt_intval(a)
     if sub_ovf(0, x) { rt_ovf("unary -") }
@@ -858,6 +900,7 @@ fn rt_truth(a, what) {
 // 32-bit pattern, every result an unsigned word in [0, 2^32), >> logical, shift counts 0..31. On ints: the 64-bit two's
 // complement pattern — & | ^ need two ints, << wraps, >> is arithmetic, shift counts 0..63 given as a num or an int.
 fn rt_word(v, op) {
+  if rt_is_flt(v) { rt_fail3(op, " works on 32-bit words: an int in [-2^31, 2^32), got ", rt_show(v, 1)) }
   if (v & 7) != 1 { rt_num_or_int_error(op, v, v) }
   let x = v >> 3
   if x < -2147483648 or x > 4294967295 { rt_fail3(op, " works on 32-bit words: an int in [-2^31, 2^32), got ", rt_show(v, 1)) }
@@ -947,6 +990,7 @@ fn rt_eq_raw(a, b) {
   if k != mem_get(b) { return 0 }
   if k == K_STR { return rt_str_eq(a, b) }
   if k == K_INT { return mem_get(a + 8) == mem_get(b + 8) }
+  if k == K_FLT { return f_eq(mem_get(a + 8), mem_get(b + 8)) }
   if k == K_BYTES {
     let n = mem_get(a + 8)
     if n != mem_get(b + 8) { return 0 }
@@ -986,6 +1030,13 @@ fn rt_eq(a, b) { return rt_bool(rt_eq_raw(a, b)) }
 fn rt_ne(a, b) { return rt_bool(not rt_eq_raw(a, b)) }
 fn rt_order(op, a, b) {
   if (a & 7) == 1 and (b & 7) == 1 { return a - b }
+  if rt_fl2(a, b) {
+    let x = rt_fbits(a)
+    let y = rt_fbits(b)
+    if f_lt(x, y) { return -1 }
+    if f_lt(y, x) { return 1 }
+    return 0
+  }
   if rt_is_int(a) and rt_is_int(b) {
     let x = rt_intval(a)
     let y = rt_intval(b)
@@ -1002,10 +1053,22 @@ fn rt_order(op, a, b) {
   rt_sb_str(sb, rt_type_name(b))
   return rt_die_lit(rt_sb_done(sb))
 }
-fn rt_lt(a, b) { return rt_bool(rt_order("<", a, b) < 0) }
-fn rt_le(a, b) { return rt_bool(rt_order("<=", a, b) <= 0) }
-fn rt_gt(a, b) { return rt_bool(rt_order(">", a, b) > 0) }
-fn rt_ge(a, b) { return rt_bool(rt_order(">=", a, b) >= 0) }
+fn rt_lt(a, b) {
+  if rt_fl2(a, b) { return rt_bool(f_lt(rt_fbits(a), rt_fbits(b))) }
+  return rt_bool(rt_order("<", a, b) < 0)
+}
+fn rt_le(a, b) {
+  if rt_fl2(a, b) { return rt_bool(f_le(rt_fbits(a), rt_fbits(b))) }
+  return rt_bool(rt_order("<=", a, b) <= 0)
+}
+fn rt_gt(a, b) {
+  if rt_fl2(a, b) { return rt_bool(f_lt(rt_fbits(b), rt_fbits(a))) }
+  return rt_bool(rt_order(">", a, b) > 0)
+}
+fn rt_ge(a, b) {
+  if rt_fl2(a, b) { return rt_bool(f_le(rt_fbits(b), rt_fbits(a))) }
+  return rt_bool(rt_order(">=", a, b) >= 0)
+}
 fn rt_contains(a, b) {
   let k = rt_kind(a)
   if k == K_LIST {
@@ -1046,9 +1109,23 @@ fn rt_ends_with(a, b) {
 }
 
 // ── indexing ─────────────────────────────────────────────────────────────────
-fn rt_index_num(i) {
+fn rt_index_num(i) { return rt_index_of(i, 0, 0) }
+// what: "list", "string" or "bytes" when indexing one (the interpreter's messages), 0 for get and slice
+fn rt_index_of(i, what, n) {
   if (i & 7) == 1 { return i >> 3 }
   if rt_is_int(i) { return rt_intval(i) }
+  if rt_is_flt(i) and what != 0 {
+    if not rt_f_whole(mem_get(i + 8)) { rt_fail3(what, " index must be an int, got ", rt_type_name(i)) }
+    // a whole double beyond 2^53 is never inside a list
+    let sb = rt_sb_new()
+    rt_sb_str(sb, "index ")
+    rt_show_into(sb, i, 0)
+    rt_sb_str(sb, " is out of range for a ")
+    rt_sb_str(sb, what)
+    rt_sb_str(sb, " of ")
+    rt_sb_dec(sb, n)
+    return rt_die_lit(rt_sb_done(sb))
+  }
   return rt_fail2("an index must be a num or an int, got ", rt_type_name(i))
 }
 fn rt_range_error(i, what, n) {
@@ -1066,7 +1143,7 @@ fn rt_index(o, i) {
   if k == K_MAP { return rt_map_get(o, i) }
   if k == K_LIST {
     let n = mem_get(o + 8)
-    var x = rt_index_num(i)
+    var x = rt_index_of(i, "list", n)
     let orig = x
     if x < 0 { x = x + n }
     if x < 0 or x >= n { rt_range_error(orig, "list", n) }
@@ -1074,7 +1151,7 @@ fn rt_index(o, i) {
   }
   if k == K_STR {
     let n = mem_get(o + 16)
-    var x = rt_index_num(i)
+    var x = rt_index_of(i, "string", n)
     let orig = x
     if x < 0 { x = x + n }
     if x < 0 or x >= n { rt_range_error(orig, "string", n) }
@@ -1082,7 +1159,7 @@ fn rt_index(o, i) {
   }
   if k == K_BYTES {
     let n = mem_get(o + 8)
-    var x = rt_index_num(i)
+    var x = rt_index_of(i, "bytes", n)
     let orig = x
     if x < 0 { x = x + n }
     if x < 0 or x >= n { rt_range_error(orig, "bytes", n) }
@@ -1095,7 +1172,7 @@ fn rt_setindex(o, i, v) {
   if k == K_MAP { return rt_map_set(o, i, v) }
   if k == K_LIST {
     let n = mem_get(o + 8)
-    var x = rt_index_num(i)
+    var x = rt_index_of(i, "list", n)
     let orig = x
     if x < 0 { x = x + n }
     if x == n { return rt_list_push(o, v) }
@@ -1237,6 +1314,7 @@ fn rt_pow(a, b) {
     return rt_mkint(r)
   }
   if (a & 7) == 1 and (b & 7) == 1 { return rt_num_pow(a, b) }
+  if rt_fl2(a, b) { return rt_unsupported("** with a fractional num") }
   return rt_num_or_int_error("**", a, b)
 }
 
@@ -1255,13 +1333,51 @@ fn rt_b_byte_len(x) {
 fn rt_b_str(x) { return rt_show(x, 0) }
 fn rt_b_repr(x) { return rt_show(x, 1) }
 fn rt_b_type_of(x) { return rt_type_name(x) }
-fn rt_parse_int(s, what) {
-  let n = mem_get(s + 8)
+// JavaScript's white space (String.prototype.trim): the byte length of the white-space character starting at p + i
+// (ASCII tab..CR and space; U+00A0, U+1680, U+2000–U+200A, U+2028, U+2029, U+202F, U+205F, U+3000, U+FEFF), else 0
+fn rt_ws_at(p, i, n) {
+  let c = mem_get8(p + i)
+  if c == 32 or (c >= 9 and c <= 13) { return 1 }
+  if c == 194 and i + 1 < n and mem_get8(p + i + 1) == 160 { return 2 }
+  if i + 2 >= n { return 0 }
+  let c1 = mem_get8(p + i + 1)
+  let c2 = mem_get8(p + i + 2)
+  if c == 225 and c1 == 154 and c2 == 128 { return 3 }
+  if c == 226 and c1 == 128 and ((c2 >= 128 and c2 <= 138) or c2 == 168 or c2 == 169 or c2 == 175) { return 3 }
+  if c == 226 and c1 == 129 and c2 == 159 { return 3 }
+  if c == 227 and c1 == 128 and c2 == 128 { return 3 }
+  if c == 239 and c1 == 187 and c2 == 191 { return 3 }
+  return 0
+}
+// the byte length of a white-space character ending at p + n
+fn rt_ws_before(p, n) {
+  if n >= 1 and rt_ws_at(p, n - 1, n) == 1 { return 1 }
+  if n >= 2 and rt_ws_at(p, n - 2, n) == 2 { return 2 }
+  if n >= 3 and rt_ws_at(p, n - 3, n) == 3 { return 3 }
+  return 0
+}
+var rt_trim_lo = 0
+var rt_trim_hi = 0
+// sets rt_trim_lo / rt_trim_hi to the string's bytes without white space at either end
+fn rt_trim_range(s) {
+  let p = s + 24
   var i = 0
+  var n = mem_get(s + 8)
+  while i < n and rt_ws_at(p, i, n) > 0 { i = i + rt_ws_at(p, i, n) }
+  while n > i and rt_ws_before(p, n) > 0 { n = n - rt_ws_before(p, n) }
+  rt_trim_lo = i
+  rt_trim_hi = n
+  return 0
+}
+// int(string): trimmed, then an optional sign and decimal digits, as the interpreter's /^[+-]?[0-9]+$/
+fn rt_parse_int(s, what) {
+  rt_trim_range(s)
+  var i = rt_trim_lo
+  let n = rt_trim_hi
   var neg = 0
-  if n > 0 and mem_get8(s + 24) == 45 {
-    neg = 1
-    i = 1
+  if i < n and (mem_get8(s + 24 + i) == 45 or mem_get8(s + 24 + i) == 43) {
+    if mem_get8(s + 24 + i) == 45 { neg = 1 }
+    i = i + 1
   }
   if i >= n { rt_fail3(what, " cannot read ", rt_show(s, 1)) }
   var v = 0
@@ -1279,13 +1395,29 @@ fn rt_parse_int(s, what) {
 fn rt_b_int(x) {
   if (x & 7) == 1 { return rt_mkint(x >> 3) }
   if rt_is_int(x) { return x }
+  if rt_is_flt(x) {
+    let b = mem_get(x + 8)
+    if not rt_f_finite(b) { rt_fail2("int cannot convert ", rt_show(x, 0)) }
+    if not f_lt(rt_f_abs(b), F_TWO63) { rt_ovf("int()") }
+    return rt_mkint(f_trunc(b))
+  }
   if rt_kind(x) == K_STR { return rt_mkint(rt_parse_int(x, "int")) }
   return rt_fail2("int needs a num, an int or a string, got ", rt_type_name(x))
 }
 fn rt_b_num(x) {
-  if (x & 7) == 1 { return x }
-  if rt_is_int(x) { return rt_mknum(rt_intval(x)) }
-  if rt_kind(x) == K_STR { return rt_mknum(rt_parse_int(x, "num")) }
+  if (x & 7) == 1 or rt_is_flt(x) { return x }
+  if rt_is_int(x) {
+    // exact, or refused as the interpreter refuses it
+    let v = rt_intval(x)
+    let d = f_of_int(v)
+    if f_lt(rt_f_abs(d), F_TWO63) and f_trunc(d) == v { return rt_fnum(d) }
+    return rt_fail3("num(", rt_show(x, 0), "): an int above 2^53 is not exactly representable as num")
+  }
+  if rt_kind(x) == K_STR {
+    let d = rt_parse_double(x)
+    if not rt_pn_ok { rt_fail3("num", " cannot read ", rt_show(x, 1)) }
+    return rt_fnum(d)
+  }
   return rt_fail2("num needs a num, an int or a string, got ", rt_type_name(x))
 }
 fn rt_b_has(m, k) {
@@ -1478,8 +1610,15 @@ fn rt_b_find_text(s, sub) {
   return rt_mknum(rt_cp_count(s, at))
 }
 fn rt_b_raise(msg) { return rt_die_lit(rt_tostr(msg)) }
+fn rt_b_sqrt(x) {
+  if not rt_isnum(x) { rt_fail2("sqrt needs a num, got ", rt_type_name(x)) }
+  let b = rt_fbits(x)
+  if f_lt(b, 0) { rt_fail("sqrt of a negative num") }
+  return rt_fnum(f_sqrt(b))
+}
 fn rt_b_floor(x) {
   if (x & 7) == 1 { return x }
+  if rt_is_flt(x) { return rt_fnum(rt_f_floor(mem_get(x + 8))) }
   return rt_fail2("floor needs a num, got ", rt_type_name(x))
 }
 // min / max: of their arguments, or of one list argument. All ints → an int; otherwise every value must be a num.
@@ -1498,7 +1637,8 @@ fn rt_minmax(args, want_max, who) {
   if not all_int {
     i = 0
     while i < n {
-      if (rt_list_get(xs, i) & 7) != 1 { rt_fail3(who, " needs a num, got ", rt_type_name(rt_list_get(xs, i))) }
+      if not rt_isnum(rt_list_get(xs, i)) { rt_fail3(who, " needs a num, got ", rt_type_name(rt_list_get(xs, i))) }
+      if rt_is_flt(rt_list_get(xs, i)) and not f_eq(rt_fbits(rt_list_get(xs, i)), rt_fbits(rt_list_get(xs, i))) { return rt_list_get(xs, i) }
       i = i + 1
     }
   }
@@ -1627,4 +1767,700 @@ fn rt_b_args() {
 fn rt_exit(code) {
   sys6(60, code, 0, 0, 0, 0)
   return 0
+}
+
+// ── fractional nums (GATE-NL-004, 2026-10-31): IEEE doubles, from the former native/float_draft.eg ──────
+
+// ── fractional nums: IEEE doubles ────────────────────────────────────────────
+// A num is the tagged form when its value is an integer within 2^53 (then it is exact in both forms, and -0 is 0);
+// any other double — fractions, larger values, NaN, ±Infinity — is boxed: [K_FLT][64-bit pattern]. Arithmetic follows
+// IEEE round-to-nearest-even through SSE2, so results are the interpreter's (JavaScript's) to the last bit; printing is
+// JavaScript's Number.prototype.toString (shortest round-trip digits, Steele-White/Dragon4 with exact bignums) and
+// parsing is correctly rounded.
+let MANT = 4503599627370495            // 2^52 - 1
+let HIDDEN = 4503599627370496          // 2^52
+let F_NAN = 9221120237041090560i       // 0x7FF8000000000000
+let F_INF = 9218868437227405312i       // 0x7FF0000000000000
+let F_HALF = 4602678819172646912i      // 0.5
+let F_TWO52 = 4841369599423283200i     // 2^52
+let F_TWO63 = 4890909195324358656i     // 2^63
+
+fn rt_sign_bit() { return 1 << 63 }
+fn rt_is_flt(v) { return rt_kind(v) == K_FLT }
+fn rt_isnum(v) { return (v & 7) == 1 or rt_kind(v) == K_FLT }
+// the double of a num
+fn rt_fbits(v) {
+  if (v & 7) == 1 { return f_of_int(v >> 3) }
+  return mem_get(v + 8)
+}
+fn rt_fbox(b) {
+  let p = rt_alloc(16)
+  mem_set(p, K_FLT)
+  mem_set(p + 8, b)
+  return p
+}
+// a double as a num value
+fn rt_fnum(b) {
+  let mag = b & (rt_sign_bit() - 1)
+  if mag == 0 { return 1 }
+  let ex = shr_u(mag, 52)
+  if ex >= 1023 and ex <= 1076 {
+    let m = (mag & MANT) | HIDDEN
+    let e = ex - 1075
+    var v = 0
+    if e >= 0 {
+      v = m << e
+    } else {
+      if (m & ((1 << (0 - e)) - 1)) != 0 { return rt_fbox(b) }
+      v = m >> (0 - e)
+    }
+    if v <= NUM_MAX {
+      if b < 0 { return (0 - v) * 8 + 1 }
+      return v * 8 + 1
+    }
+  }
+  return rt_fbox(b)
+}
+fn rt_f_finite(b) { return (shr_u(b, 52) & 2047) != 2047 }
+fn rt_f_abs(b) { return b & (rt_sign_bit() - 1) }
+// Number.isInteger: finite and its own floor
+fn rt_f_whole(b) { return rt_f_finite(b) and rt_f_floor(b) == b }
+
+// floor of a double, as a double (|x| >= 2^52, NaN and infinities are their own floor)
+fn rt_f_floor(b) {
+  if not f_lt(rt_f_abs(b), F_TWO52) { return b }
+  let t = f_trunc(b)
+  var r = f_of_int(t)
+  if f_lt(b, r) { r = f_of_int(t - 1) }
+  if r == 0 and b < 0 { return rt_sign_bit() }
+  return r
+}
+fn rt_f_ceil(b) {
+  let n = rt_f_floor(b ^ rt_sign_bit())
+  return n ^ rt_sign_bit()
+}
+// JavaScript's Math.round: the nearest integer, halves toward +Infinity
+fn rt_f_round(b) {
+  if not f_lt(rt_f_abs(b), F_TWO52) { return b }
+  let fl = rt_f_floor(b)
+  if f_le(F_HALF, f_sub(b, fl)) { return f_add(fl, f_of_int(1)) }
+  return fl
+}
+
+// fmod on 64-bit patterns, exactly (the remainder of x / y with x's sign, as C's fmod and JavaScript's %)
+fn rt_ult(a, b) { return (a ^ rt_sign_bit()) < (b ^ rt_sign_bit()) }
+fn rt_fmod(x, y) {
+  var ux = x
+  var uy = y
+  var ex = shr_u(ux, 52) & 2047
+  var ey = shr_u(uy, 52) & 2047
+  let sx = ux & rt_sign_bit()
+  let ax = ux << 1
+  let ay = uy << 1
+  if ay == 0 or ex == 2047 { return F_NAN }
+  if ey == 2047 {
+    if (uy & MANT) != 0 { return F_NAN }
+    return x
+  }
+  if not rt_ult(ay, ax) {
+    if ax == ay { return sx }
+    return x
+  }
+  if ex == 0 {
+    var i = ux << 12
+    while i >= 0 {
+      ex = ex - 1
+      i = i << 1
+    }
+    ux = ux << (1 - ex)
+  } else {
+    ux = (ux & MANT) | HIDDEN
+  }
+  if ey == 0 {
+    var i = uy << 12
+    while i >= 0 {
+      ey = ey - 1
+      i = i << 1
+    }
+    uy = uy << (1 - ey)
+  } else {
+    uy = (uy & MANT) | HIDDEN
+  }
+  while ex > ey {
+    let i = ux - uy
+    if i >= 0 {
+      if i == 0 { return sx }
+      ux = i
+    }
+    ux = ux << 1
+    ex = ex - 1
+  }
+  let i = ux - uy
+  if i >= 0 {
+    if i == 0 { return sx }
+    ux = i
+  }
+  while shr_u(ux, 52) == 0 {
+    ux = ux << 1
+    ex = ex - 1
+  }
+  if ex > 0 {
+    ux = ux - HIDDEN
+    ux = ux | (ex << 52)
+  } else {
+    ux = shr_u(ux, 1 - ex)
+  }
+  return ux | sx
+}
+
+// ── bignums for exact conversions: [length][capacity][32-bit limbs, little-endian, one per 8-byte slot] ────────
+let MASK32 = 4294967295
+fn bn_new(cap) {
+  let b = rt_alloc(16 + cap * 8)
+  mem_set(b, 0)
+  mem_set(b + 8, cap)
+  return b
+}
+fn bn_limb(b, i) { return mem_get(b + 16 + i * 8) }
+fn bn_setl(b, i, v) { return mem_set(b + 16 + i * 8, v) }
+fn bn_need(b, n) {
+  if n > mem_get(b + 8) { rt_die_lit("native: a number too large to convert") }
+  return 0
+}
+fn bn_trim(b) {
+  var n = mem_get(b)
+  while n > 0 and bn_limb(b, n - 1) == 0 { n = n - 1 }
+  return mem_set(b, n)
+}
+fn bn_from(b, v) {
+  var x = v
+  var i = 0
+  while x != 0 {
+    bn_setl(b, i, x & MASK32)
+    x = shr_u(x, 32)
+    i = i + 1
+  }
+  mem_set(b, i)
+  return b
+}
+fn bn_copy(dst, src) {
+  let n = mem_get(src)
+  bn_need(dst, n)
+  mem_copy(dst + 16, src + 16, n * 8)
+  mem_set(dst, n)
+  return dst
+}
+fn bn_mul_small(b, k) {
+  let n = mem_get(b)
+  var c = 0
+  var i = 0
+  while i < n {
+    let t = bn_limb(b, i) * k + c
+    bn_setl(b, i, t & MASK32)
+    c = shr_u(t, 32)
+    i = i + 1
+  }
+  if c != 0 {
+    bn_need(b, n + 1)
+    bn_setl(b, n, c)
+    mem_set(b, n + 1)
+  }
+  return b
+}
+fn bn_mul_pow10(b, e) {
+  var k = e
+  while k >= 9 {
+    bn_mul_small(b, 1000000000)
+    k = k - 9
+  }
+  var p = 1
+  while k > 0 {
+    p = p * 10
+    k = k - 1
+  }
+  if p > 1 { bn_mul_small(b, p) }
+  return b
+}
+fn bn_shl(b, s) {
+  let n = mem_get(b)
+  if n == 0 or s == 0 { return b }
+  let w = s >> 5
+  let r = s & 31
+  bn_need(b, n + w + 1)
+  var top = 0
+  if r > 0 { top = shr_u(bn_limb(b, n - 1), 32 - r) }
+  bn_setl(b, n + w, top)
+  var i = n - 1
+  while i >= 0 {
+    var v = (bn_limb(b, i) << r) & MASK32
+    if r > 0 and i > 0 { v = v | shr_u(bn_limb(b, i - 1), 32 - r) }
+    bn_setl(b, i + w, v)
+    i = i - 1
+  }
+  i = 0
+  while i < w {
+    bn_setl(b, i, 0)
+    i = i + 1
+  }
+  mem_set(b, n + w + 1)
+  return bn_trim(b)
+}
+fn bn_shr1(b) {
+  let n = mem_get(b)
+  var i = 0
+  while i < n {
+    var v = shr_u(bn_limb(b, i), 1)
+    if i + 1 < n { v = v | ((bn_limb(b, i + 1) & 1) << 31) }
+    bn_setl(b, i, v)
+    i = i + 1
+  }
+  return bn_trim(b)
+}
+fn bn_cmp(a, b) {
+  let na = mem_get(a)
+  let nb = mem_get(b)
+  if na != nb {
+    if na < nb { return -1 }
+    return 1
+  }
+  var i = na - 1
+  while i >= 0 {
+    let x = bn_limb(a, i)
+    let y = bn_limb(b, i)
+    if x != y {
+      if x < y { return -1 }
+      return 1
+    }
+    i = i - 1
+  }
+  return 0
+}
+// a -= b (a >= b)
+fn bn_sub(a, b) {
+  let n = mem_get(a)
+  let m = mem_get(b)
+  var br = 0
+  var i = 0
+  while i < n {
+    var t = bn_limb(a, i) - br
+    if i < m { t = t - bn_limb(b, i) }
+    if t < 0 {
+      t = t + 4294967296
+      br = 1
+    } else {
+      br = 0
+    }
+    bn_setl(a, i, t)
+    i = i + 1
+  }
+  return bn_trim(a)
+}
+// dst = a + b (dst may be a)
+fn bn_add(dst, a, b) {
+  let na = mem_get(a)
+  let nb = mem_get(b)
+  var n = na
+  if nb > n { n = nb }
+  bn_need(dst, n + 1)
+  var c = 0
+  var i = 0
+  while i < n {
+    var t = c
+    if i < na { t = t + bn_limb(a, i) }
+    if i < nb { t = t + bn_limb(b, i) }
+    bn_setl(dst, i, t & MASK32)
+    c = shr_u(t, 32)
+    i = i + 1
+  }
+  bn_setl(dst, n, c)
+  mem_set(dst, n + 1)
+  return bn_trim(dst)
+}
+fn bn_bitlen(b) {
+  let n = mem_get(b)
+  if n == 0 { return 0 }
+  var top = bn_limb(b, n - 1)
+  var bits = 0
+  while top != 0 {
+    bits = bits + 1
+    top = shr_u(top, 1)
+  }
+  return (n - 1) * 32 + bits
+}
+
+// ── double → shortest decimal (Dragon4 free-format, as V8's bignum-dtoa) ────
+var rt_digits = 0        // 24 bytes of digits
+var rt_ndigits = 0
+var rt_dexp = 0          // the value is 0.d1d2… × 10^rt_dexp
+fn rt_shortest(bits) {
+  let ex = shr_u(bits, 52) & 2047
+  var m = bits & MANT
+  var q = -1074
+  if ex != 0 {
+    m = m | HIDDEN
+    q = ex - 1075
+  }
+  let even = (m & 1) == 0
+  let closer = ex > 1 and (bits & MANT) == 0
+  let r = bn_new(48)
+  let s = bn_new(48)
+  let mp = bn_new(48)
+  let mm = bn_new(48)
+  bn_from(r, m)
+  if q >= 0 {
+    if closer {
+      bn_shl(r, q + 2)
+      bn_from(s, 4)
+      bn_from(mp, 1)
+      bn_shl(mp, q + 1)
+    } else {
+      bn_shl(r, q + 1)
+      bn_from(s, 2)
+      bn_from(mp, 1)
+      bn_shl(mp, q)
+    }
+    bn_from(mm, 1)
+    bn_shl(mm, q)
+  } else {
+    bn_from(s, 1)
+    if closer {
+      bn_shl(r, 2)
+      bn_shl(s, 2 - q)
+      bn_from(mp, 2)
+    } else {
+      bn_shl(r, 1)
+      bn_shl(s, 1 - q)
+      bn_from(mp, 1)
+    }
+    bn_from(mm, 1)
+  }
+  // estimate the decimal exponent, then correct it exactly
+  var bl = 0
+  var mt = m
+  while mt != 0 {
+    bl = bl + 1
+    mt = shr_u(mt, 1)
+  }
+  let e2 = q + bl - 1
+  var n = ((e2 * 78913) >> 18) + 1
+  if n >= 0 {
+    bn_mul_pow10(s, n)
+  } else {
+    bn_mul_pow10(r, 0 - n)
+    bn_mul_pow10(mp, 0 - n)
+    bn_mul_pow10(mm, 0 - n)
+  }
+  let t = bn_new(48)
+  while 1 {
+    bn_add(t, r, mp)
+    let c = bn_cmp(t, s)
+    if c > 0 or (even and c == 0) {
+      bn_mul_small(s, 10)
+      n = n + 1
+    } else {
+      break
+    }
+  }
+  while 1 {
+    bn_add(t, r, mp)
+    bn_mul_small(t, 10)
+    let c = bn_cmp(t, s)
+    if c < 0 or (not even and c == 0) {
+      bn_mul_small(r, 10)
+      bn_mul_small(mp, 10)
+      bn_mul_small(mm, 10)
+      n = n - 1
+    } else {
+      break
+    }
+  }
+  if rt_digits == 0 { rt_digits = rt_alloc(32) }
+  var k = 0
+  while 1 {
+    bn_mul_small(r, 10)
+    bn_mul_small(mp, 10)
+    bn_mul_small(mm, 10)
+    var d = 0
+    while bn_cmp(r, s) >= 0 {
+      bn_sub(r, s)
+      d = d + 1
+    }
+    let cl = bn_cmp(r, mm)
+    let low = cl < 0 or (even and cl == 0)
+    bn_add(t, r, mp)
+    let ch = bn_cmp(t, s)
+    let high = ch > 0 or (even and ch == 0)
+    if not low and not high {
+      mem_set8(rt_digits + k, d)
+      k = k + 1
+    } else {
+      if low and high {
+        bn_add(t, r, r)
+        let c2 = bn_cmp(t, s)
+        if c2 > 0 or (c2 == 0 and (d & 1) == 1) { d = d + 1 }
+      } else if high {
+        d = d + 1
+      }
+      mem_set8(rt_digits + k, d)
+      k = k + 1
+      break
+    }
+  }
+  rt_ndigits = k
+  rt_dexp = n
+  return 0
+}
+// JavaScript's ToString for a double
+fn rt_sb_double(sb, bits) {
+  var b = bits
+  if not rt_f_finite(b) {
+    if (b & MANT) != 0 { return rt_sb_str(sb, "NaN") }
+    if b < 0 { rt_sb_byte(sb, 45) }
+    return rt_sb_str(sb, "Infinity")
+  }
+  if b < 0 {
+    b = rt_f_abs(b)
+    if b != 0 { rt_sb_byte(sb, 45) }
+  }
+  if b == 0 { return rt_sb_byte(sb, 48) }
+  rt_shortest(b)
+  let k = rt_ndigits
+  let n = rt_dexp
+  var i = 0
+  if k <= n and n <= 21 {
+    while i < k {
+      rt_sb_byte(sb, 48 + mem_get8(rt_digits + i))
+      i = i + 1
+    }
+    while i < n {
+      rt_sb_byte(sb, 48)
+      i = i + 1
+    }
+    return 0
+  }
+  if 0 < n and n <= 21 {
+    while i < k {
+      if i == n { rt_sb_byte(sb, 46) }
+      rt_sb_byte(sb, 48 + mem_get8(rt_digits + i))
+      i = i + 1
+    }
+    return 0
+  }
+  if -6 < n and n <= 0 {
+    rt_sb_byte(sb, 48)
+    rt_sb_byte(sb, 46)
+    var z = 0
+    while z < 0 - n {
+      rt_sb_byte(sb, 48)
+      z = z + 1
+    }
+    while i < k {
+      rt_sb_byte(sb, 48 + mem_get8(rt_digits + i))
+      i = i + 1
+    }
+    return 0
+  }
+  rt_sb_byte(sb, 48 + mem_get8(rt_digits))
+  if k > 1 {
+    rt_sb_byte(sb, 46)
+    i = 1
+    while i < k {
+      rt_sb_byte(sb, 48 + mem_get8(rt_digits + i))
+      i = i + 1
+    }
+  }
+  rt_sb_byte(sb, 101)
+  let e = n - 1
+  if e >= 0 {
+    rt_sb_byte(sb, 43)
+    return rt_sb_dec(sb, e)
+  }
+  rt_sb_byte(sb, 45)
+  return rt_sb_dec(sb, 0 - e)
+}
+
+// ── decimal → double, correctly rounded ──────────────────────────────────────
+// d: the decimal digits as a bignum (not zero), e: the power of ten → the 64-bit pattern (positive)
+fn rt_dec_to_double(d, e) {
+  let cap = 220
+  let r = bn_new(cap)
+  let s = bn_new(cap)
+  bn_copy(r, d)
+  bn_from(s, 1)
+  if e >= 0 { bn_mul_pow10(r, e) } else { bn_mul_pow10(s, 0 - e) }
+  var k = 53 - (bn_bitlen(r) - bn_bitlen(s))
+  let rk = bn_new(cap)
+  let sk = bn_new(cap)
+  let t = bn_new(cap)
+  var qv = 0
+  var tries = 0
+  while 1 {
+    if k > 1074 { k = 1074 }
+    bn_copy(rk, r)
+    bn_copy(sk, s)
+    if k >= 0 { bn_shl(rk, k) } else { bn_shl(sk, 0 - k) }
+    // binary long division: qv = rk / sk (fewer than 56 bits), rk = the remainder
+    bn_copy(t, sk)
+    bn_shl(t, 55)
+    qv = 0
+    var i = 55
+    while i >= 0 {
+      if bn_cmp(rk, t) >= 0 {
+        bn_sub(rk, t)
+        qv = qv | (1 << i)
+      }
+      bn_shr1(t)
+      i = i - 1
+    }
+    tries = tries + 1
+    if qv >= HIDDEN * 2 and tries < 4 {
+      k = k - 1
+    } else if qv < HIDDEN and k < 1074 and tries < 4 {
+      k = k + 1
+    } else {
+      break
+    }
+  }
+  // round to nearest, ties to even
+  bn_add(t, rk, rk)
+  let c = bn_cmp(t, sk)
+  if c > 0 or (c == 0 and (qv & 1) == 1) { qv = qv + 1 }
+  if qv == HIDDEN * 2 {
+    qv = HIDDEN
+    k = k - 1
+  }
+  if qv < HIDDEN { return qv }
+  let biased = 1075 - k
+  if biased >= 2047 { return F_INF }
+  return (biased << 52) | (qv - HIDDEN)
+}
+var rt_pn_ok = 0
+// JavaScript's Number(string), for what Emerge accepts: decimal (with fraction and exponent), 0x/0o/0b, Infinity;
+// surrounding white space is ignored. Sets rt_pn_ok; gives the 64-bit pattern.
+fn rt_parse_double(str) {
+  rt_pn_ok = 0
+  let p = str + 24
+  rt_trim_range(str)
+  var i = rt_trim_lo
+  var n = rt_trim_hi
+  if i >= n { return 0 }
+  var neg = 0
+  var signed = 0
+  let c0 = mem_get8(p + i)
+  if c0 == 43 or c0 == 45 {
+    signed = 1
+    if c0 == 45 { neg = 1 }
+    i = i + 1
+  }
+  let rest = n - i
+  if rest == 8 and mem_get8(p + i) == 73 {
+    // "Infinity"
+    let w = "Infinity"
+    var j = 0
+    while j < 8 and mem_get8(p + i + j) == mem_get8(w + 24 + j) { j = j + 1 }
+    if j < 8 { return 0 }
+    rt_pn_ok = 1
+    if neg { return F_INF | rt_sign_bit() }
+    return F_INF
+  }
+  let d = bn_new(120)
+  if not signed and rest > 2 and mem_get8(p + i) == 48 {
+    let x = mem_get8(p + i + 1) | 32
+    var base = 0
+    if x == 120 { base = 16 }
+    if x == 111 { base = 8 }
+    if x == 98 { base = 2 }
+    if base > 0 {
+      i = i + 2
+      while i < n {
+        let c = mem_get8(p + i)
+        var v = 99
+        if c >= 48 and c <= 57 { v = c - 48 }
+        if (c | 32) >= 97 and (c | 32) <= 102 { v = (c | 32) - 87 }
+        if v >= base { return 0 }
+        bn_mul_small(d, base)
+        if mem_get(d) == 0 { bn_from(d, v) } else {
+          let one = bn_new(2)
+          bn_from(one, v)
+          bn_add(d, d, one)
+        }
+        i = i + 1
+      }
+      rt_pn_ok = 1
+      if mem_get(d) == 0 { return 0 }
+      return rt_dec_to_double(d, 0)
+    }
+  }
+  var ndig = 0
+  var sig = 0
+  var e10 = 0
+  var seen_point = 0
+  var sticky = 0
+  let one = bn_new(2)
+  while i < n {
+    let c = mem_get8(p + i)
+    if c == 46 {
+      if seen_point { return 0 }
+      seen_point = 1
+    } else if c >= 48 and c <= 57 {
+      ndig = ndig + 1
+      if sig > 0 or c != 48 {
+        if sig < 780 {
+          bn_mul_small(d, 10)
+          bn_from(one, c - 48)
+          bn_add(d, d, one)
+          sig = sig + 1
+          if seen_point { e10 = e10 - 1 }
+        } else {
+          if c != 48 { sticky = 1 }
+          if not seen_point { e10 = e10 + 1 }
+        }
+      } else if seen_point {
+        e10 = e10 - 1
+      }
+    } else {
+      break
+    }
+    i = i + 1
+  }
+  if ndig == 0 { return 0 }
+  if i < n {
+    let c = mem_get8(p + i) | 32
+    if c != 101 { return 0 }
+    i = i + 1
+    var eneg = 0
+    if i < n and (mem_get8(p + i) == 43 or mem_get8(p + i) == 45) {
+      if mem_get8(p + i) == 45 { eneg = 1 }
+      i = i + 1
+    }
+    if i >= n { return 0 }
+    var ev = 0
+    while i < n {
+      let c2 = mem_get8(p + i)
+      if c2 < 48 or c2 > 57 { return 0 }
+      if ev < 100000 { ev = ev * 10 + (c2 - 48) }
+      i = i + 1
+    }
+    if eneg { e10 = e10 - ev } else { e10 = e10 + ev }
+  }
+  rt_pn_ok = 1
+  var r = 0
+  if mem_get(d) != 0 {
+    if sticky {
+      // more than 780 significant digits: keep 779 and a 1 (V8's rule), which rounds the same way
+      bn_mul_small(d, 10)
+      bn_from(one, 1)
+      bn_add(d, d, one)
+      e10 = e10 - 1
+    }
+    if e10 + sig > 310 {
+      r = F_INF
+    } else if e10 + sig < -330 {
+      r = 0
+    } else {
+      r = rt_dec_to_double(d, e10)
+    }
+  }
+  if neg { return r | rt_sign_bit() }
+  return r
 }

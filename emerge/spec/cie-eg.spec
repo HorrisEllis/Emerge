@@ -1204,7 +1204,7 @@ spec:
         state: not_built
         file: emerge/lang/native/codegen.eg
         blocked_by: []
-        next: "closures (lambdas capturing variables by reference, as the interpreter does), functions as values, try/else, ** and the prelude (map, filter, reduce, sum …) compiled from core/prelude.eg; then fractional nums with shortest round-trip printing (Ryu)."
+        next: "F5: ** with a fractional operand (a port of fdlibm's pow, as V8's Math.pow). Built: closures, fn values, try/else, ** and the prelude (2026-10-29); fractional nums (2026-10-31, emerge 1.9.0)."
       spec_ref: s10_build_and_bootstrap
       description: "The rest of the expression language, natively: closures, functions as values, try, **, the prelude, fractional nums."
       deps:
@@ -1226,6 +1226,31 @@ spec:
       # proven case by case in native.test.js ("moved to the prelude"). s02 enforced in the interpreter too: strings are code points.
       # Still outside native: fractional nums (GATE-NL-004), upper / lower (case tables, with D5), sort_by and the other variadic
       # builtins (no optional parameters yet), json / parse_json, the `..` value, matches. Full record: lang/emerge-lang.spec addendum.
+      # ADDENDUM 2026-10-31 (b): fractional nums natively, GATE-NL-004. Mapped before code.
+      # James, 2026-10-31, quoting the open list back: "native compiler doesn't handle fractional numbers, and can't do upper, lower
+      # or matches (regex). Compartments, the ledger and components run only in the interpreter, not natively yet."
+      # Order (this plan's): F1–F4 fractional nums; then upper/lower (waits on D5, his), matches, and native_system (ledger,
+      # compartments, components).
+      # The representation: a num whose value is a whole number within 2^53 stays the tagged small form (every fast path unchanged);
+      # any other double (a fraction, larger, ±Infinity, NaN) is boxed [K_FLT][64-bit pattern]. Every result is normalised back to
+      # the small form when it can be, so 0.5 + 0.5 is the same value as 1. -0 is 0 (nothing in Emerge can observe the sign).
+      # The reference is the interpreter (JavaScript doubles), to the last bit and the last printed digit.
+      #   F1 rt.eg: native/float_draft.eg wired in. + - * / % (JavaScript's ((a % b) + b) % b), unary -, < <= > >= ==, floor, idiv,
+      #      min / max, type_of; overflow past 2^53 becomes a double (rounded as JavaScript rounds), never a refusal.
+      #      depends_on: [native] · files: lang/native/rt.eg (native/float_draft.eg merged into it and removed as a duplicate; in git)
+      #   F2 text: printing is JavaScript's shortest round-trip (str, print, repr, json: Infinity / NaN print as in the interpreter,
+      #      null in json); num(string) is Number(string), trimmed, decimal with exponent, 0x / 0o / 0b, Infinity; int(num) truncates
+      #      toward zero; int / num of a string trimmed as the interpreter does. depends_on: [F1] · files: lang/native/rt.eg
+      #   F3 literals: front.eg reads 1.5, 1e-7, 2.5e3; codegen emits a fractional literal as a boxed constant whose 64-bit pattern is
+      #      computed in Emerge (exactly, by scaling: the same bits in the interpreter and natively). sqrt via SSE2 (IEEE, correctly
+      #      rounded, as Math.sqrt). depends_on: [F1, F2] · files: lang/native/front.eg, lang/native/codegen.eg, lang/native/rt.eg
+      #   F4 proof: native.test cases for every path above, the prelude battery's fractional cases, the self-host fixed point (AT-11)
+      #      re-reached, CI on Linux and Windows. depends_on: [F3] · files: lang/test/native.test.js, lang/native/bin/emerge
+      #   F5 ** with a fractional operand: JavaScript's Math.pow is V8's fdlibm port; matching it bit for bit means porting fdlibm's
+      #      pow. Until then a fractional ** is refused natively by name. depends_on: [F4]
+      # BUILT 2026-10-31 (emerge 1.9.0): F1–F4. native.test.js 91/91 — three new cases (literals and printing; division, conversions,
+      # overflow to doubles and every refusal; the 57-case prelude battery with its fractional cases), each the interpreter's output
+      # byte for byte. The compiler reaches its fixed point again (selfhost.test.js: stages 0, 1, 2 identical, AT-11). Open: F5.
 
     - id:    MOD-NATIVE-SYSTEM
       name:  native_system

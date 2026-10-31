@@ -59,10 +59,30 @@ fn fits32(v) { return v >= -2147483648i and v <= 2147483647i }
 fn load_imm(v) {
   if fits32(v) { e(x.mov_ri(x.RAX, num(v))) } else { e(x.mov_ri64(x.RAX, le64i(v))) }
 }
-fn tagged_num(v) {
-  if v != floor(v) { refuse("a fractional num literal") }
-  if v > 9007199254740992 or v < -9007199254740992 { refuse("a num literal beyond 2^53") }
-  return int(v) * 8i + 1i
+fn tagged_num(v) { return int(v) * 8i + 1i }
+// a num literal that is not a whole number within 2^53: its IEEE 754 pattern, found by exact scaling (halving a double at or
+// above 2^53 and doubling one below 2^52 are exact), so the interpreter and the native compiler give the same bits
+fn f64_bits(v) {
+  if v == 0 { return 0i }
+  var sign = 0i
+  var a = v
+  if a < 0 {
+    sign = 1i << 63
+    a = 0 - a
+  }
+  if a == a * 2 { return sign | 9218868437227405312i }
+  var m = a
+  var ex = 0
+  while m >= 9007199254740992 {
+    m = m / 2
+    ex += 1
+  }
+  while m < 4503599627370496 and ex > -1074 {
+    m = m * 2
+    ex -= 1
+  }
+  if m < 4503599627370496 { return sign | int(m) }
+  return sign | (int(ex + 1075) << 52) | (int(m) - 4503599627370496i)
 }
 
 // ── static data ──────────────────────────────────────────────────────────────
@@ -371,8 +391,16 @@ fn gen(n) {
       // raw code: a num literal is a machine word; beyond 2^53 it may not be exact, so write it as an int literal
       if n.value > 9007199254740992 or n.value < -9007199254740992 { refuse("a raw num literal beyond 2^53 (write it with i)") }
       load_imm(int(n.value))
-    } else {
+    } else if n.value == floor(n.value) and n.value <= 9007199254740992 and n.value >= -9007199254740992 {
       load_imm(tagged_num(n.value))
+    } else {
+      // a fractional num (or one beyond 2^53): a static boxed double, [K_FLT = 7][pattern], as rt.eg reads it
+      let l = fresh("flt")
+      d({ align: 8 })
+      d({ label: l })
+      d(le64i(7i))
+      d(le64i(f64_bits(n.value)))
+      lea_label(l)
     }
     return null
   }
@@ -701,7 +729,7 @@ let BUILTINS = {
   raise: ["rt_b_raise", 1, 1], read_file: ["rt_b_read_file", 1, 1], read_bytes: ["rt_b_read_bytes", 1, 1],
   write_file: ["rt_b_write_file", 2, 2], write_bytes: ["rt_b_write_bytes", 2, 2], chmod_exec: ["rt_b_chmod_exec", 1, 1],
   args: ["rt_b_args", 0, 0], idiv: ["rt_idiv", 2, 2], shr_u: ["rt_shr_u", 2, 2], floor: ["rt_b_floor", 1, 1],
-  utf8: ["rt_b_utf8", 1, 1], truthy: ["rt_b_truthy", 2, 2], split: ["rt_b_split", 2, 2],
+  utf8: ["rt_b_utf8", 1, 1], sqrt: ["rt_b_sqrt", 1, 1], truthy: ["rt_b_truthy", 2, 2], split: ["rt_b_split", 2, 2],
   find_text: ["rt_b_find_text", 2, 2]
 }
 // builtins that take any number of arguments: the arguments go to the runtime as one list

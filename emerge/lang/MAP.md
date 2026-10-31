@@ -1,6 +1,6 @@
 # Emerge — the map
 
-Generated from the language itself (emerge 1.8.0) by `eg map`, and again by every `eg bootstrap`. Do not edit it:
+Generated from the language itself (emerge 1.9.0) by `eg map`, and again by every `eg bootstrap`. Do not edit it:
 change the source and run `node lang/eg.js map --out lang/MAP.md` (a test fails when this file is out of date).
 
 ## The layers
