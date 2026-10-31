@@ -1,0 +1,31 @@
+// Level 5 — a kind says what something must be; a template makes as many as you need.
+kind Stage {
+  require version
+  in take(x: { v: num })
+  out give: { v: num }
+}
+
+template Scale(factor: num) is Stage {
+  namespace = "line"
+  version = "1.0.0"
+  state { seen: 0 }
+  boundary positive { factor > 0 }
+  in take(x: { v: num }) {
+    state.seen += 1
+    emit out give { v: x.v * factor }
+  }
+  out give: { v: num }
+}
+
+let a = spawn Scale("double", 2)        // build one from the template
+let b = spawn Scale("triple", 3)        // and another, with a different setting
+wire "input" -> a.take
+wire a.give -> b.take                   // a feeds b
+wire b.give -> "output"
+
+on "output" (o) { print("out:", o.v) }
+
+emit "input" { v: 1 }                   // 1 × 2 × 3
+emit "input" { v: 5 }
+print("each one is a Stage?", is_kind(a, "Stage"), is_kind(b, "Stage"))
+print("how many Scales are alive:", len(instances("Scale")))

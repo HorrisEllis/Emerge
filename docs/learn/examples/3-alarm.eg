@@ -1,0 +1,40 @@
+// Level 3 — parts that never touch, joined only by wires.
+component Thermometer {
+  id = "home.thermometer"
+  namespace = "home"
+  version = "1.0.0"
+  state { last: 0 }
+  boundary believable { state.last > -100 }
+
+  in read(r: { celsius: num }) {
+    state.last = r.celsius
+    emit out reading { celsius: r.celsius }
+  }
+  out reading: { celsius: num }
+}
+
+component Alarm {
+  id = "home.alarm"
+  namespace = "home"
+  version = "1.0.0"
+  state { limit: 30, rang: 0 }
+  boundary has_limit { state.limit > 0 }
+
+  in check(r: { celsius: num }) {
+    if r.celsius > state.limit {
+      state.rang += 1
+      emit out alert { celsius: r.celsius }
+    }
+  }
+  out alert: { celsius: num }
+}
+
+wire "temperature" -> Thermometer.read       // the outside world → the thermometer
+wire Thermometer.reading -> Alarm.check      // the thermometer → the alarm (shapes checked before running)
+wire Alarm.alert -> "alert"                  // the alarm → the outside world
+
+on "alert" (a) { print("too hot:", a.celsius) }
+
+emit "temperature" { celsius: 21 }
+emit "temperature" { celsius: 35 }
+print("the alarm rang", Alarm.state.rang, "time")

@@ -1,0 +1,15 @@
+// Level 1 — say something, remember something, repeat something.
+print("hello")
+
+let name = "Ada"                 // let: a name for a value that never changes
+print("hi {name}")               // {name} puts the value inside the text
+
+fn double(x: num): num = x * 2   // fn: a recipe that turns an input into an output
+print(double(21))
+
+var steps = 0                    // var: a value that can change
+for i in 1..4 {                  // 1..4 is 1, 2, 3
+  steps += 1
+  print("step {i}")
+}
+print("took {steps} steps")
