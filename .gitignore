@@ -6,3 +6,5 @@ emerge/output/*
 
 # rollback copy kept by `eg bootstrap`
 emerge/lang/build/previous/
+bench/speed/out/
+bench/speed/work-native

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Emerge-vs-JS token benchmark.
-//   node bench.js static                       size comparison of reference solutions; checks every reference passes
+//   node bench.js static                       size comparison of reference solutions (eg, js, py); checks every reference passes
 //   node bench.js llm --model qwen2.5-coder    asks a local Ollama model to solve each task in both languages
 // Put this folder next to `emerge/` (the repo root), or set EG_PATH=/path/to/emerge/lang/eg.js
 const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
@@ -33,24 +33,45 @@ function judge(out) {
   const ok = !!m && +m[2] === 0 && +m[1] > 0;
   return { ok, output: out.trim().slice(0, 700) };
 }
-const runners = { eg: runEmerge, js: runJs };
+function runPy(taskDir, code) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyb-'));
+  fs.writeFileSync(path.join(tmp, 'solution.py'), code);
+  fs.copyFileSync(path.join(taskDir, 'tests.py'), path.join(tmp, 'tests.py'));
+  const r = spawnSync(process.env.PYTHON || 'python3', [path.join(ROOT, 'py-runner.py'), tmp], { encoding: 'utf8', timeout: 30000 });
+  return judge((r.stdout || '') + (r.stderr || ''));
+}
+const runners = { eg: runEmerge, js: runJs, py: runPy };
+const LANGS = ['eg', 'js', 'py'];
+
+// Real token counts when js-tiktoken is installed (TIKTOKEN_PATH=<folder holding node_modules/js-tiktoken>); else ~chars/4.
+function tokenizers() {
+  try {
+    const req = process.env.TIKTOKEN_PATH ? require(require.resolve('js-tiktoken', { paths: [process.env.TIKTOKEN_PATH] })) : require('js-tiktoken');
+    return ['cl100k_base', 'o200k_base'].map(n => ({ name: n, count: (enc => s => enc.encode(s).length)(req.getEncoding(n)) }));
+  } catch { return []; }
+}
 
 // ---------- static mode ----------
 function staticMode() {
-  console.log('task        lang  solution_chars  ~tokens   reference passes');
-  const tot = { eg: 0, js: 0 };
+  const toks = tokenizers();
+  const cols = toks.length ? toks.map(t => t.name) : ['~chars/4'];
+  const count = (s) => toks.length ? toks.map(t => t.count(s)) : [est(s)];
+  console.log('task        lang  chars ' + cols.map(c => c.padStart(12)).join('') + '   reference passes');
+  const tot = Object.fromEntries(LANGS.map(l => [l, cols.map(() => 0)]));
   for (const t of TASKS) {
     const dir = path.join(ROOT, 'tasks', t);
-    for (const lang of ['eg', 'js']) {
+    for (const lang of LANGS) {
+      if (!fs.existsSync(path.join(dir, 'solution.' + lang))) continue;
       const code = read(dir, 'solution.' + lang);
       const r = runners[lang](dir, code);
-      tot[lang] += est(code);
-      console.log(t.padEnd(11), lang.padEnd(5), String(code.length).padStart(14), String(est(code)).padStart(8), '  ', r.ok ? 'yes' : 'NO\n' + r.output);
+      const c = count(code);
+      c.forEach((n, i) => tot[lang][i] += n);
+      console.log(t.padEnd(11), lang.padEnd(4), String(code.length).padStart(6), c.map(n => String(n).padStart(12)).join(''), '  ', r.ok ? 'yes' : 'NO\n' + r.output);
     }
   }
-  console.log('\ntotal reference-solution tokens (est): eg ' + tot.eg + '  js ' + tot.js);
+  console.log('\ntotal reference-solution tokens (' + cols.join(' / ') + '): ' + LANGS.map(l => l + ' ' + tot[l].join(' / ')).join('   '));
   const ctx = emergeContext();
-  console.log('Emerge reference context a model needs: ~' + est(ctx) + ' tokens (' + ctx.length + ' chars). JS needs none.');
+  console.log('Emerge reference context a model needs: ' + count(ctx).join(' / ') + ' tokens (' + ctx.length + ' chars). JS and Python need none.');
   console.log('Break-even: Emerge only wins on tokens if its per-task saving, summed over tasks per session, exceeds that context cost (or it is cached).');
 }
 

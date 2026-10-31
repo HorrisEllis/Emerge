@@ -1,0 +1,45 @@
+// Same work in every language: an LCG makes the input, then rle over a string and median over a list.
+fn rle(s) {
+  if len(s) == 0 { return "" }
+  var out = range(len(s))
+  var k = 0
+  var cur = s[0]
+  var run = 0
+  for ch in s {
+    if ch == cur {
+      run += 1
+    } else {
+      out[k] = cur + str(run)
+      k += 1
+      cur = ch
+      run = 1
+    }
+  }
+  out[k] = cur + str(run)
+  return join(slice(out, 0, k + 1), "")
+}
+
+fn median(xs) {
+  let s = sort(xs)
+  let n = len(s)
+  let mid = idiv(n, 2)
+  if n % 2 == 1 { return s[mid] }
+  return (s[mid - 1] + s[mid]) / 2
+}
+
+let N = 200000
+var seed = 12345
+var chars = range(N)
+var nums = range(N)
+for i in 0..N {
+  seed = (seed * 1664525 + 1013904223) % 4294967296
+  let hi = idiv(seed, 65536)
+  var c = "b"
+  if hi % 4 == 0 { c = "a" }
+  chars[i] = c
+  nums[i] = hi % 1000
+}
+let s = join(chars, "")
+let r = rle(s)
+print(len(r))
+print(median(nums))
