@@ -884,6 +884,15 @@ spec:
             his_words:
               - "James, 2026-10-31: \"it can only reason inside of its own relative scope of learning … if we use variable-based innovation, taking two things and innovating and creating, then we can innovate outside the relative scope of understanding … Mutating, integrating something new from what's known already.\""
               - "His innovation toolkit (Nexus docs/innovation-toolkit-main.md, 4. Variable-Driven Innovation): \"Take two existing variables and combine them … Add variables one at a time. Observe how the meaning shifts. Combine until something clicks.\" · 22. \"Box Identification: Any assumption or accepted way is a box.\" · 25. \"Force recombination across domains … Accept contradictions as scaffolding.\""
+          - id: LP-08
+            text: "Constraint-based imagination aims the recombination of LP-07; it is never blind. (a) A gap's boundary is the target: candidates are built only from parts whose shapes can meet it, so the constraint is both the direction and the selection. (b) Imagine by whatif: suspend one invariant or add one, preview the world it makes, the real state untouched (the language's whatif, toolkit 9 and 22). (c) Import a constraint from another domain or project and apply it here (toolkit: constraints you don't understand become levers). (d) Tight boundaries at one level free recombination at the next, because every part below is proven (toolkit: constraints at one level may enable creativity at another). A seeded roll may choose the constraint (his meta-dice: Modifier / Constraint)."
+            his_words:
+              - "James, 2026-10-31: \"I know it can't, because I can't either. But constraint-based imagination, that's how I discovered the variable-based innovation.\""
+              - "His toolkit: \"Some of the most novel innovation comes from working around constraints, not letting obstacles become walls.\" · 9. \"Constraint Suspension: Pick one assumption and flip it … Observe what emerges.\" · \"Constraints you don't understand become unexpected levers.\" · \"Key principle: Constraints at one level may enable creativity at another.\""
+        design_principle: >
+          The loop mirrors how its author thinks, not how a model is trained: no creation from nothing (he: "because I
+          can't either"), constraints as the engine of imagination, recombination as the way out of the box, and every
+          step kept where he can see it.
         sources_of_learning: >
           Three, one per tense of evidence: failed tests (what happened and failed), shadow (what happened and was not
           noticed), negative space (what never happened). A model learns only from what it sees; this knows the shape of
