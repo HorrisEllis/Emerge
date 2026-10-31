@@ -1,0 +1,128 @@
+// synth.eg — the deterministic-first synthesizer, rungs 1 and 2 (cie-eg.spec 15, MOD-SYNTH). No model.
+// James, 2026-10-31: "Replable code generation, without ai."
+//
+//   eg run lang/cie/synth.eg <units.json> <out-dir>
+//
+// units.json: [{ id, signature, derive }] — the derive blocks of a chunks.spec, as JSON.
+// For each unit it writes <out-dir>/<id>.eg and prints one record: id, form, rung, boundary hash, code hash.
+// The same derive block always gives the same bytes (DF-02). A form it does not know is a gap, never a guess.
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+/** the part of a signature before "{" or "=": "fn seq_len(b0: num): num" */
+fn head(sig) = trim(sig)
+
+/** "0x00..0x7F" → a range test on v; "1" → an equality test */
+fn when_test(v, w) {
+  let parts = split(w, "..")
+  if len(parts) == 2 { return "{v} >= {trim(parts[0])} and {v} <= {trim(parts[1])}" }
+  return "{v} == {trim(w)}"
+}
+
+// ── rung 1: derive ───────────────────────────────────────────────────────────
+
+fn derive_cases(sig, d) {
+  var lines = ["{head(sig)} \{"]
+  for c in d.cases {
+    lines = push(lines, "  if {when_test(d.on, c.when)} \{ return {c.then} \}")
+  }
+  if has(d, "else") {
+    lines = push(lines, "  return {d["else"]}")
+  } else if has(d, "else_raise") {
+    lines = push(lines, "  raise(\"{d.else_raise}\")")
+  } else {
+    return { gap: "cases without an else (DF: an else is required)" }
+  }
+  lines = push(lines, "\}")
+  return { code: join(lines, "\n"), rung: 1 }
+}
+
+fn derive_predicate(sig, d) {
+  if has(d, "in") { return { code: "{head(sig)} = {when_test(d.on, d["in"])}", rung: 1 } }
+  if has(d, "expr") { return { code: "{head(sig)} = {d.expr}", rung: 1 } }
+  return { gap: "predicate needs in or expr" }
+}
+
+fn derive_formula(sig, d) = { code: "{head(sig)} = {d.expr}", rung: 1 }
+
+fn derive_reject_if(sig, d) {
+  var lines = ["{head(sig)} \{"]
+  for c in d.conds {
+    lines = push(lines, "  if {c} \{ return false \}")
+  }
+  lines = push(lines, "  return true")
+  lines = push(lines, "\}")
+  return { code: join(lines, "\n"), rung: 1 }
+}
+
+// ── rung 2: templates (fixed skeletons; every hole is one expression from the spec) ──
+
+/** walk a list by a step the body chooses; stop at the first failure with its position; else return the result */
+let FAIL_FAST_SCAN = [
+  "@head@ \{",
+  "  var out = []",
+  "  var i = 0",
+  "  while i < len(@over@) \{",
+  "    let n = @step@",
+  "    if n == 0 or i + n > len(@over@) \{ return \{ ok: false, offset: i \} \}",
+  "    var acc = @start@",
+  "    for k in 1..n \{",
+  "      let b = @over@[i + k]",
+  "      if not (@follow_ok@) \{ return \{ ok: false, offset: i \} \}",
+  "      acc = @fold@",
+  "    \}",
+  "    if not (@accept@) \{ return \{ ok: false, offset: i \} \}",
+  "    out = push(out, acc)",
+  "    i += n",
+  "  \}",
+  "  return \{ ok: true, @ok_key@: out \}",
+  "\}",
+]
+
+let TEMPLATES = { fail_fast_scan: FAIL_FAST_SCAN }
+
+fn derive_template(sig, d) {
+  if not has(TEMPLATES, d.template) { return { gap: "unknown template {d.template}" } }
+  var code = replace(join(TEMPLATES[d.template], "\n"), "@head@", head(sig))
+  for k in keys(d.holes) {
+    code = replace(code, "@{k}@", d.holes[k])
+  }
+  if find_text(code, "@") >= 0 { return { gap: "template {d.template} has a hole the spec did not fill" } }
+  return { code: code, rung: 2 }
+}
+
+// ── dispatch ─────────────────────────────────────────────────────────────────
+
+let FORMS = {
+  cases: derive_cases,
+  predicate: derive_predicate,
+  formula: derive_formula,
+  reject_if: derive_reject_if,
+  template: derive_template,
+}
+
+fn synthesize(unit) {
+  if not has(unit, "derive") { return { gap: "no derive block: not derivable without a model" } }
+  let d = unit.derive
+  if not has(FORMS, d.form) { return { gap: "unknown form {d.form}" } }
+  return FORMS[d.form](unit.signature, d)
+}
+
+// ── main ─────────────────────────────────────────────────────────────────────
+
+let a = args()
+if len(a) < 2 { raise("usage: eg run synth.eg <units.json> <out-dir>") }
+let units = parse_json(read_file(a[0]))
+var gaps = 0
+for u in units {
+  let r = synthesize(u)
+  let bh = slice(hex(sha256(json(get(u, "derive")))), 0, 16)
+  if has(r, "gap") {
+    gaps += 1
+    print("{u.id}  GAP  {r.gap}  boundary {bh}")
+  } else {
+    write_file("{a[1]}/{u.id}.eg", r.code + "\n")
+    print("{u.id}  {u.derive.form}  rung {r.rung}  boundary {bh}  code {slice(hex(sha256(r.code)), 0, 16)}")
+  }
+}
+print("{len(units) - gaps} written, {gaps} gaps, 0 model calls")

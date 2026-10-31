@@ -1480,10 +1480,11 @@ spec:
       name:  synth
       uuid:  cie-eg-synth-v0-3-1-0001
       build:
-        state: not_built
+        state: partial
         file: emerge/lang/cie/synth.eg
         blocked_by: [D9]
-        next: "the deterministic-first synthesizer (section 15) once adopted; CH-Q5 decides .eg or spec compiler first."
+        built: "2026-10-31: rungs 1 and 2 in .eg (CH-Q5 answered by doing: .eg first). Forms cases, predicate, formula, reject_if; template fail_fast_scan. bench/chunks.js derive: utf8_decode 6/6 units generated and passing, the assembled decoder passes the monolith tests, byte-identical on a second run, 0 model calls."
+        next: "known-answer vectors from outside the spec (DF-06); a cached result by boundary hash (DF-03); more templates (fold, validate, route); rung 3 stays a gap, never a model (section 16, LP-03)."
       spec_ref: s15_chunks_as_layers.deterministic_first
       status: PROPOSED
       description: >

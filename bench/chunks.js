@@ -3,6 +3,7 @@
 // its boundary declared at every edge (cie-eg.spec s15), compared with the same job as one task?
 //
 //   node chunks.js static                                   check every reference unit passes; prompt sizes per unit
+//   node chunks.js derive                                   rungs 1-2 with no model: synth.eg writes every unit, then test
 //   node chunks.js run   --model qwen2.5-coder:1.5b         one model, both conditions (monolith and chunked)
 //   node chunks.js sweep --models qwen2.5-coder:0.5b,qwen2.5-coder:1.5b,qwen2.5-coder:3b,qwen2.5-coder:7b
 //   node chunks.js selftest                                 the whole pipeline against a fake model server (no model needed)
@@ -241,6 +242,39 @@ function staticMode() {
   if (!allOk || !whole.ok) process.exitCode = 1;
 }
 
+// ---------- derive: rungs 1 and 2 with no model (cie-eg.spec 15; emerge/lang/cie/synth.eg) ----------
+// The units' derive blocks go to synth.eg (written in Emerge). Its code is tested exactly as a model's would be: each
+// unit alone with its deps, then the assembled program against the monolith's tests. Run twice: the bytes must match.
+function deriveMode() {
+  const opts = options(); const { spec } = loadSuite(opts.suite);
+  const synth = path.join(EMERGE, 'lang', 'cie', 'synth.eg');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'egd-'));
+  fs.writeFileSync(path.join(tmp, 'units.json'), JSON.stringify(spec.units.map(u => ({ id: u.id, signature: u.signature, derive: u.derive }))));
+  const gen = dir => {
+    fs.mkdirSync(dir, { recursive: true });
+    const r = spawnSync(process.execPath, [EG, 'run', synth, path.join(tmp, 'units.json'), dir], { encoding: 'utf8', timeout: 60000 });
+    return ((r.stdout || '') + (r.stderr || '')).trim();
+  };
+  const log = gen(path.join(tmp, 'a')); gen(path.join(tmp, 'b'));
+  console.log(log + '\n');
+  const code = {}; let allOk = true, same = true;
+  console.log('unit           generated passes   same bytes on a second run');
+  for (const u of spec.units) {
+    const f = id => path.join(tmp, 'a', id + '.eg');
+    if (!fs.existsSync(f(u.id))) { allOk = false; console.log(u.id.padEnd(14), 'NOT GENERATED'); continue; }
+    code[u.id] = fs.readFileSync(f(u.id), 'utf8').trim();
+    const again = fs.readFileSync(path.join(tmp, 'b', u.id + '.eg'), 'utf8').trim() === code[u.id];
+    same = same && again;
+    const r = runEg([(u.deps || []).map(d => code[d]).join('\n\n'), code[u.id], u.tests].filter(Boolean).join('\n\n'));
+    allOk = allOk && r.ok;
+    console.log(u.id.padEnd(14), (r.ok ? 'yes' : 'NO').padEnd(18), again ? 'yes' : 'NO', r.ok ? '' : '\n' + r.output);
+  }
+  const whole = runEg(spec.units.map(u => code[u.id] || '').join('\n\n') + '\n\n' + spec.monolith.tests);
+  console.log('assembled program passes the monolith tests: ' + (whole.ok ? 'yes' : 'NO\n' + whole.output));
+  console.log('model calls: 0   tokens: 0   deterministic: ' + (same ? 'yes' : 'NO'));
+  if (!allOk || !whole.ok || !same) process.exitCode = 1;
+}
+
 // ---------- selftest: a fake model server that answers from the references ----------
 // It replies with a broken answer first for each new task, then the reference, so retries, feedback, dep stripping,
 // integration, token accounting and both APIs are all exercised. It proves the plumbing, not any model.
@@ -289,6 +323,7 @@ async function main() {
   const mode = process.argv[2]; const opts = options();
   if (mode === 'static') return staticMode();
   if (mode === 'selftest') return selftest();
+  if (mode === 'derive') return deriveMode();
   if (mode === 'run' || mode === 'sweep') {
     const models = mode === 'run' ? [arg('model')] : (arg('models') || '').split(',').filter(Boolean);
     if (!models.length || !models[0]) { console.error(mode === 'run' ? 'need --model <name>' : 'need --models a,b,c'); process.exit(1); }
@@ -296,6 +331,6 @@ async function main() {
     for (const m of models) all.push(await runModel(chat, m, suite, opts));
     return summarize(all, opts, opts.suite);
   }
-  console.log('usage: node chunks.js static | selftest | run --model <name> | sweep --models a,b,c   [see the header for options]');
+  console.log('usage: node chunks.js static | derive | selftest | run --model <name> | sweep --models a,b,c   [see the header for options]');
 }
 main().catch(e => { console.error(e.message); process.exit(1); });

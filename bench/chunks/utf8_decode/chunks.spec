@@ -24,6 +24,15 @@ spec:
           - "0xE0..0xEF → 3"
           - "0xF0..0xF4 → 4   (0xF5..0xFF → 0: beyond U+10FFFF)"
           - "0x80..0xBF → 0   (continuation bytes cannot start a sequence)"
+      derive:                      # rung 1 (cie-eg.spec 15): the same rules as data; synth.eg writes the code
+        form: cases
+        on: b0
+        cases:
+          - { when: "0x00..0x7F", then: "1" }
+          - { when: "0xC2..0xDF", then: "2" }
+          - { when: "0xE0..0xEF", then: "3" }
+          - { when: "0xF0..0xF4", then: "4" }
+        else: "0"
       examples: ["seq_len(0x41) == 1", "seq_len(0xC3) == 2", "seq_len(0xE2) == 3", "seq_len(0xF0) == 4", "seq_len(0x80) == 0"]
       deps: []
       tests: |
@@ -51,6 +60,10 @@ spec:
         in:  { b: "number 0..255" }
         out: bool
         invariants: ["true exactly for 0x80..0xBF"]
+      derive:
+        form: predicate
+        on: b
+        in: "0x80..0xBF"
       examples: ["is_cont(0x80) == true", "is_cont(0x41) == false"]
       deps: []
       tests: |
@@ -74,6 +87,15 @@ spec:
           - "n == 2 → b0 & 0x1F"
           - "n == 3 → b0 & 0x0F"
           - "n == 4 → b0 & 0x07"
+      derive:
+        form: cases
+        on: n
+        cases:
+          - { when: "1", then: "b0" }
+          - { when: "2", then: "b0 & 0x1F" }
+          - { when: "3", then: "b0 & 0x0F" }
+          - { when: "4", then: "b0 & 0x07" }
+        else_raise: "lead_bits: n must be 1..4"
       examples: ["lead_bits(0x41, 1) == 0x41", "lead_bits(0xC3, 2) == 0x03", "lead_bits(0xE2, 3) == 0x02", "lead_bits(0xF0, 4) == 0"]
       deps: []
       tests: |
@@ -94,6 +116,9 @@ spec:
         in:  { acc: "number, the code point so far", b: "a continuation byte 0x80..0xBF" }
         out: "number"
         invariants: ["result == (acc << 6) | (b & 0x3F)"]
+      derive:
+        form: formula
+        expr: "(acc << 6) | (b & 0x3F)"
       examples: ["add_cont(0x03, 0xA9) == 0xE9", "add_cont(0x02, 0x82) == 0x82"]
       deps: []
       tests: |
@@ -116,6 +141,14 @@ spec:
           - "surrogate → false: 0xD800 <= cp <= 0xDFFF"
           - "too large → false: cp > 0x10FFFF"
           - "otherwise true"
+      derive:
+        form: reject_if
+        conds:
+          - "n == 2 and cp < 0x80"
+          - "n == 3 and cp < 0x800"
+          - "n == 4 and cp < 0x10000"
+          - "cp >= 0xD800 and cp <= 0xDFFF"
+          - "cp > 0x10FFFF"
       examples: ["valid_scalar(0xE9, 2) == true", "valid_scalar(0x41, 2) == false", "valid_scalar(0xD800, 3) == false"]
       deps: []
       tests: |
@@ -148,6 +181,17 @@ spec:
           - "cp starts as lead_bits, then add_cont for each following byte"
           - "valid_scalar(cp, n) false → fail at the sequence's first byte"
           - "empty list → { ok: true, cps: [] }"
+      derive:                      # rung 2: a known template; each hole is one expression written here, not by a model
+        form: template
+        template: fail_fast_scan
+        holes:
+          over: "bs"
+          step: "seq_len(bs[i])"
+          start: "lead_bits(bs[i], n)"
+          follow_ok: "is_cont(b)"
+          fold: "add_cont(acc, b)"
+          accept: "valid_scalar(acc, n)"
+          ok_key: "cps"
       examples:
         - "decode([0x41, 0xC3, 0xA9]) == { ok: true, cps: [0x41, 0xE9] }"
         - "decode([0x41, 0xFF]) == { ok: false, offset: 1 }"
