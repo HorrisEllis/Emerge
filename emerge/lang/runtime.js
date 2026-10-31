@@ -983,6 +983,20 @@ function createRuntime(opts = {}) {
     const abs = path.resolve(path.dirname(fromFile), relPath);
     if (W.modules.has(abs)) return W.modules.get(abs);
     if (W.loading.has(abs)) err(`circular use of ${relPath}`);
+    if (abs.endsWith('.node')) {
+      // a node file: data and options kept out of the code (James, 2026-10-31: "only using hardcoded when neccarry, using
+      // external node files for data, options, etc."). Read in its JSON form (JSON is valid YAML, so Nexus reads it too);
+      // its top-level fields (envelope, id, intent, payload …) become the module's members.
+      let text;
+      try { text = require('fs').readFileSync(abs, 'utf8'); } catch (e) { err(`use ${relPath}: ${e.code || e.message}`); }
+      let v;
+      try { v = JSON.parse(text); } catch (e) { err(`use ${relPath}: a node file is read in its JSON form (JSON is valid YAML): ${e.message}`); }
+      if (v === null || typeof v !== 'object' || Array.isArray(v)) err(`use ${relPath}: a node file holds one object`);
+      const conv = x => Array.isArray(x) ? x.map(conv) : (x !== null && typeof x === 'object') ? Object.keys(x).reduce((m, k) => { m[k] = conv(x[k]); return m; }, mkMap()) : x;
+      const m = new EModule(alias, conv(v));
+      W.modules.set(abs, m);
+      return m;
+    }
     W.loading.add(abs);
     const file = rt.file, line = rt.line;
     let exportsMap;

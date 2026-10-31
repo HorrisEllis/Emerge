@@ -29,7 +29,18 @@ eg words                        # the vocabulary, each word with the quote of hi
 
 Every word it understood is shown with his own dated quote. Every word it did not understand is a gap, named with the
 command that teaches it; nothing is guessed, and nothing is written until the result checks clean.
-Spec: `emerge/spec/say.spec`.
+
+His systems words work too: friction (a gate that resists at a cost), tension (a gap's pressure), gap, compound,
+ripple, leverage, what if, if / then / else:
+
+```
+eg say "a compartment called Garden with plants, at most 50 plants with friction. when rain falls add 3 to plants,
+plants compound by 10 percent, ripple to bloom. if plants over 40 then gap the garden is crowded. what if rain falls. test it"
+```
+
+**Hardcoded only when necessary.** Every number he says becomes a named lever in `garden.node`, and every starting value
+is data there, written beside `garden.eg` in his node envelope. The code reads them (`use "./garden.node" as node`), so a
+change is made in the node file, never in the code. Spec: `emerge/spec/say.spec`.
 
 ## Build any project from its spec
 

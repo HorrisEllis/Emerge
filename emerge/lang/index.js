@@ -78,8 +78,9 @@ function collectModules(mainPath) {
   const order = [];
   (function visit(p) {
     if (seen.has(p)) return;
-    const m = compileOrThrow(p, root);
     seen.set(p, true);
+    if (p.endsWith('.node')) { order.push({ abs: p, node: true }); return; }   // data, not code: copied, never compiled
+    const m = compileOrThrow(p, root);
     order.push({ abs: p, ...m });
     for (const it of m.program.items) if (it.type === 'Use') visit(path.resolve(path.dirname(p), it.path));
   })(abs);
@@ -118,10 +119,17 @@ function buildFile(mainPath, outDir, opts = {}) {
   const warnings = [];
   for (const m of graph.modules) {
     if (path.relative(graph.root, m.abs).startsWith('..')) {
-      return { files, errors: [{ message: `${m.file} lives outside the main file's folder — build writes each module beside the main one, so move it under ${path.basename(graph.root)}/`, line: 0, col: 0, file: m.file }], warnings };
+      return { files, errors: [{ message: `${m.file || path.basename(m.abs)} lives outside the main file's folder — build writes each module beside the main one, so move it under ${path.basename(graph.root)}/`, line: 0, col: 0, file: m.file }], warnings };
     }
   }
   for (const m of graph.modules) {
+    if (m.node) {
+      const dest = path.join(out, path.relative(graph.root, m.abs));
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(m.abs, dest);
+      files.push(dest);
+      continue;
+    }
     const rel = path.relative(graph.root, m.abs).replace(/\.eg$/, '.js');
     const dest = path.join(out, rel);
     fs.mkdirSync(path.dirname(dest), { recursive: true });

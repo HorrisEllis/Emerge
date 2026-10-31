@@ -7,6 +7,20 @@ spec:
   # quotes from mne" · on the coder's reading (his words → their meaning → Emerge, deterministically; a model only for a
   # gap, and each gap closed once): "yes, im trying to remove as much friction from me and the code as possibel"
   # Earlier, 2026-07-09: "emerge is meant to cut down 90% of tokens, warp some and speed it up and compound it".
+  # 2026-10-31, after eg say 0.1 was shown: "leverage. friction. tension. ripples. compound. a lot of eravos was my language,
+  # systemns thinking. what ifs, if thens, else," · "only using hardcoded when neccarry, using external node files for data,
+  # options, etc."
+  # ADDENDUM 2026-10-31 (say 0.2), mapped before code:
+  #   - his rule, applied: every number he says becomes a named option, and every starting value is data, both in
+  #     <name>.node beside the code (his node envelope: envelope, uuid, type, id, intent, system, tags, summary, payload),
+  #     read with use "./<name>.node" as node. Only a true constant stays literal (never negative is >= 0). A node file is
+  #     read in its JSON form, which is valid YAML, so Nexus's tools read the same file (lang/runtime.js rt.use).
+  #   - his words, with his meanings (ERAVOS relational physics: "FRICTION — unstable relational compression … An edge exists
+  #     but its interaction produces resistance"; "GAP — missing relational compression"): friction → a gate that resists at
+  #     a cost instead of refusing (a soft constraint); tension → a gap's pressure, an option; gap / missing → a gap opened;
+  #     compound → growth in proportion to itself, by a rate; ripple → a change sets off the next event; leverage / lever →
+  #     a named option; what if → a whatif preview, the real state untouched; if / then / else → a conditional step.
+  #   The mapping of each word to a construct is the coder's reading of his meanings, to confirm.
   # His decisions: section 0 of cie-eg.spec (for_its_author, ai_is_additive, toward_no_ai_dependency). The design below
   # (a vocabulary of his words with their evidence, a deterministic reader, teach to close a gap) is the coder's,
   # built on his toolkit's crystal-memory rule: "verify, test, crystalized."
@@ -14,10 +28,10 @@ spec:
 
   meta:
     name:        say
-    version:     0.1.0
+    version:     0.2.0
     author:      james-brooks
     created_at:  2026-10-31T00:00:00Z
-    status:      building
+    status:      built (0.2, emerge 1.11.0)
     uuid:        emerge-say-v0-1-0-2026-1031-jamesbrooks-001
     language_stack: [emerge]
     purpose: >
@@ -60,13 +74,15 @@ spec:
         - { name: words }
       exports:
         - "understand(sentence) → { kind, name, intent, fields, gates, events, door, record, test, used, gaps }"
-        - "source(meaning) → string   (Emerge source)"
+        - "source(meaning) → string   (Emerge source, reading its numbers and starting data from <name>.node)"
+        - "node(meaning) → string   (<name>.node: his node envelope in JSON form, payload { options, start })"
         - "report(meaning) → string   (what was understood, with his quotes; the gaps)"
       gate_pipeline:
         - "GATE-SAY-001: split into clauses (. ; ,) and words; longest form first"
         - "GATE-SAY-002: each content word is a known form, a name, a number, or a gap"
         - "GATE-SAY-003: the meaning has a kind and a name, or each missing part is a gap"
         - "GATE-SAY-004: the source is written only from the meaning, never from guesses"
+        - "GATE-SAY-005: a number he says is an option in the node file, never a literal in the code; a starting value is data in the node file"
       behavioral_contracts:
         - "The same sentence always gives the same source, byte for byte."
         - "No model is called. Nothing is guessed: an unknown word is reported as a gap with the command that would teach it."
@@ -90,7 +106,7 @@ spec:
         - "eg words → the vocabulary, each word with its quote"
       gate_pipeline:
         - "GATE-SC-001: the source passes the checker before it is written"
-        - "GATE-SC-002: a file that exists is never overwritten"
+        - "GATE-SC-002: a file that exists is never overwritten (neither <name>.eg nor <name>.node)"
         - "GATE-SC-003: teach refuses a phrase that is already a form, or a word that does not exist"
       behavioral_contracts:
         - "Gaps make no file: the report says what to say or teach."

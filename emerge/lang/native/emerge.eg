@@ -65,6 +65,7 @@ fn load(path, raw, text) { return load_as(path, raw, text, null) }
 fn load_as(path, raw, text, want_id) {
   if has(ids, path) { return ids[path] }
   if has(visiting, path) { raise("emerge: use cycle through {path}") }
+  if path ends_with ".node" { raise("native: a node file (use \"{basename(path)}\") is not in the native subset yet") }
   visiting[path] = true
   var src = text
   if src == null { src = read_file(path) }

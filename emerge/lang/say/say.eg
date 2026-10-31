@@ -1,10 +1,13 @@
 // lang/say/say.eg — his words in, Emerge out. No model. Spec: emerge/spec/say.spec (MOD-SAY).
 // James, 2026-10-31: "To make coding easy for me using my own language. Ai is additive. Also it's working towards removing
-// the dependency of ai." · "im trying to remove as much friction from me and the code as possibel"
+// the dependency of ai." · "im trying to remove as much friction from me and the code as possibel" · "leverage. friction.
+// tension. ripples. compound. … what ifs, if thens, else," · "only using hardcoded when neccarry, using external node files
+// for data, options, etc."
 // A sentence is read against his vocabulary (words.eg, taught.eg), longest phrase first. Every word is a known form, a
 // name, a number, filler, or a gap. The source is written only from what was understood; a gap is named, never guessed.
-//   eg run say.eg say "<sentence>"           → one line of JSON: { ok, name, source, report }
-//   eg run say.eg teach "<phrase>" <word>    → the phrase added to taught.eg as a form of <word>
+// Every number he says becomes a named option, and every starting value is data, in <name>.node beside the code.
+//   eg run say.eg say "<sentence>"           → one line of JSON: { ok, name, source, node, report }
+//   eg run say.eg teach "<phrase>" <word>    → the phrase as a form of <word>, and taught.eg's new text
 //   eg run say.eg words                      → his vocabulary, each word with his quote
 use "./words.eg" as lex
 use "./taught.eg" as tg
@@ -40,11 +43,18 @@ fn all_forms() {
 fn bare(w) {
   var out = []
   for c in split(lower(w), "") {
-    if (c >= "a" and c <= "z") or (c >= "0" and c <= "9") or c == "-" or c == "_" { out = push(out, c) }
+    if (c >= "a" and c <= "z") or (c >= "0" and c <= "9") or c == "-" or c == "_" or c == "." or c == "%" { out = push(out, c) }
   }
-  return join(out, "")
+  // a full stop belongs to a number (2.5), never to a word's end
+  var s = join(out, "")
+  while len(s) > 0 and slice(s, len(s) - 1) == "." { s = slice(s, 0, len(s) - 1) }
+  return s
 }
-fn is_number(w) = w matches "^[0-9]+$"
+fn is_number(w) = w matches "^[0-9]+(\\.[0-9]+)?%?$"
+fn number(w) {
+  if w ends_with "%" { return num(slice(w, 0, len(w) - 1)) / 100 }
+  return num(w)
+}
 fn ident(w) {
   var out = []
   for c in split(lower(w), "") {
@@ -68,11 +78,18 @@ fn tokens(clause) {
   }
   return out
 }
+// clauses end at ; , a new line, or a full stop that is not inside a number
 fn clauses(sentence) {
   var out = []
   var cur = []
-  for c in split(sentence, "") {
-    if c == "." or c == ";" or c == "," or c == "\n" {
+  let cs = split(sentence, "")
+  for i, c in cs {
+    var ends = c == ";" or c == "," or c == "\n"
+    if c == "." {
+      let next = cs[i + 1] ?? " "
+      ends = not (next >= "0" and next <= "9")
+    }
+    if ends {
       out = push(out, join(cur, ""))
       cur = []
     } else {
@@ -98,16 +115,89 @@ fn match_at(toks, i, forms) {
   return null
 }
 
-// ── understanding ────────────────────────────────────────────────────────────
+// ── the meaning ──────────────────────────────────────────────────────────────
+// an option: a number he said, named, kept in the node file (his levers)
+// the meaning being built: one var, owned by understand (a fn may not change a parameter's contents)
+var m = null
+
+fn option(name, value) {
+  var n = name
+  var k = 2
+  while true {
+    var clash = null
+    for o in m.options {
+      if o.name == n { clash = o }
+    }
+    if clash == null {
+      m.options = push(m.options, { name: n, value: value })
+      return n
+    }
+    if clash.value == value { return n }
+    n = "{name}_{k}"
+    k += 1
+  }
+}
+fn add_field(f) {
+  if not (m.fields contains f) { m.fields = push(m.fields, f) }
+}
+fn add_steps(handler, steps) {
+  for k, h in m.handlers {
+    if h.name == handler {
+      m.handlers[k].steps = h.steps + steps
+      return null
+    }
+  }
+  m.handlers = push(m.handlers, { name: handler, steps: steps })
+}
+fn is_content(toks, i, forms) = i < len(toks) and not (lex.filler contains toks[i].w) and not is_number(toks[i].w) and match_at(toks, i, forms) == null
+
 fn understand(sentence) {
   let forms = all_forms()
-  var m = { kind: null, name: null, intent: null, fields: [], gates: [], events: [], door: false, record: false, test: false, used: [], gaps: [] }
+  m = { kind: null, name: null, intent: null, fields: [], gates: [], friction: false, handlers: [], door: false,
+            record: false, test: false, whatifs: [], options: [], gaps_used: false, tension_said: false, used: [], gaps: [] }
+  var handler = "change"
   for clause in clauses(sentence) {
     let toks = tokens(clause)
     var mode = ""
     var focus = null
     var event = []
+    var steps = []
+    var cond = null
+    var branch = ""
     var i = 0
+    fn step(s) {
+      if cond != null {
+        if branch == "else" { cond.otherwise = push(cond.otherwise, s) } else { cond.then = push(cond.then, s) }
+      } else {
+        steps = push(steps, s)
+      }
+    }
+    // the field a step works on: the next content word, else the one in focus
+    fn take_field() {
+      while i < len(toks) and (lex.filler contains toks[i].w or toks[i].w == "by" or toks[i].w == "from") and not is_number(toks[i].w) { i += 1 }
+      if is_content(toks, i, forms) {
+        let f = ident(toks[i].w)
+        i += 1
+        add_field(f)
+        focus = f
+        return f
+      }
+      return focus
+    }
+    fn take_number() {
+      var j = i
+      while j < len(toks) and (lex.filler contains toks[j].w or toks[j].w == "by") { j += 1 }
+      if j < len(toks) and is_number(toks[j].w) {
+        var n = number(toks[j].w)
+        i = j + 1
+        if i < len(toks) and (toks[i].w == "percent" or toks[i].w == "pct") {
+          n = n / 100
+          i += 1
+        }
+        return n
+      }
+      return null
+    }
     while i < len(toks) {
       let f = match_at(toks, i, forms)
       if f != null {
@@ -140,53 +230,138 @@ fn understand(sentence) {
         } else if act == "fields" {
           mode = "fields"
         } else if act == "gate:nonneg" {
-          m.gates = push(m.gates, { kind: "nonneg", field: focus, n: 0 })
-        } else if act == "gate:max" {
-          var n = null
-          if i < len(toks) and is_number(toks[i].w) {
-            n = num(toks[i].w)
-            i += 1
-          }
-          if n == null {
-            m.gaps = push(m.gaps, { what: "the number for at most", say: "at most <number>" })
-          } else {
-            if focus == null and i < len(toks) and not (lex.filler contains toks[i].w) and match_at(toks, i, forms) == null {
-              focus = ident(toks[i].w)
-              if not (m.fields contains focus) { m.fields = push(m.fields, focus) }
-              i += 1
+          m.gates = push(m.gates, { kind: "nonneg", field: focus, opt: null })
+        } else if act == "gate:max" or act starts_with "cmp:" {
+          var cmp = "<="
+          if act starts_with "cmp:" { cmp = slice(act, 4) }
+          if mode == "cond" {
+            let n = take_number()
+            if n == null {
+              m.gaps = push(m.gaps, { what: "the number to compare with", say: "if <field> under <number> then …" })
+            } else {
+              let word = { "<": "under", ">": "over", "<=": "at_most", ">=": "at_least" }[cmp]
+              cond.cmp = cmp
+              cond.opt = option("{handler}_{cond.field ?? "value"}_{word}", n)
+              mode = "then"
             }
-            m.gates = push(m.gates, { kind: "max", field: focus, n: n })
+          } else if act == "gate:max" {
+            let n = take_number()
+            if n == null {
+              m.gaps = push(m.gaps, { what: "the number for at most", say: "at most <number>" })
+            } else {
+              if focus == null and is_content(toks, i, forms) {
+                focus = ident(toks[i].w)
+                add_field(focus)
+                i += 1
+              }
+              m.gates = push(m.gates, { kind: "max", field: focus, n: n })
+            }
+          } else {
+            m.gaps = push(m.gaps, { what: "\"{f.form}\" compares, but there is no if before it", say: "if <field> {f.form} <number> then …" })
           }
         } else if act == "event" {
           mode = "event"
           event = []
         } else if act == "add" or act == "sub" {
-          var by = 1
-          var field = null
-          while i < len(toks) and field == null {
-            let w = toks[i].w
-            if is_number(w) {
-              by = num(w)
-            } else if not (lex.filler contains w) and w != "by" and w != "from" and match_at(toks, i, forms) == null {
-              field = ident(w)
-            } else if match_at(toks, i, forms) != null {
-              break
-            }
-            i += 1
-          }
-          if field == null { field = focus }
+          let n = take_number()
+          let field = take_field()
+          var by = n ?? 1
           if field == null {
             m.gaps = push(m.gaps, { what: "what to {act} to", say: "{act} <field>" })
           } else {
-            if not (m.fields contains field) { m.fields = push(m.fields, field) }
+            add_field(field)
             focus = field
-            var name = "change"
-            if len(event) > 0 { name = join(event, "_") }
-            var delta = by
-            if act == "sub" { delta = 0 - by }
-            m.events = push(m.events, { name: name, field: field, delta: delta })
+            if len(event) > 0 { handler = join(event, "_") }
+            step({ op: act, field: field, opt: option("{handler}_{field}_by", by) })
           }
           mode = ""
+        } else if act == "compound" {
+          var field = take_field()
+          let n = take_number()
+          if field == null { field = take_field() }
+          if field == null {
+            m.gaps = push(m.gaps, { what: "what compounds", say: "<field> compounds by <rate>" })
+          } else if n == null {
+            m.gaps = push(m.gaps, { what: "the rate {field} compounds by", say: "compound {field} by <number> percent" })
+          } else {
+            if len(event) > 0 { handler = join(event, "_") }
+            step({ op: "compound", field: field, opt: option("{field}_rate", n) })
+          }
+          mode = ""
+        } else if act == "ripple" {
+          var to = []
+          while is_content(toks, i, forms) {
+            to = push(to, ident(toks[i].w))
+            i += 1
+          }
+          if len(event) > 0 { handler = join(event, "_") }
+          var target = "rippled"
+          if len(to) > 0 { target = join(to, "_") }
+          step({ op: "ripple", to: target })
+        } else if act == "gap" {
+          var text = []
+          while i < len(toks) and match_at(toks, i, forms) == null {
+            text = push(text, toks[i].raw)
+            i += 1
+          }
+          if len(event) > 0 { handler = join(event, "_") }
+          var msg = "{handler} left a gap"
+          if len(text) > 0 { msg = join(text, " ") }
+          m.gaps_used = true
+          step({ op: "gap", text: msg })
+        } else if act == "tension" {
+          let n = take_number()
+          if n == null {
+            m.gaps = push(m.gaps, { what: "how much tension", say: "tension <number between 0 and 1>" })
+          } else {
+            option("tension", n)
+            m.tension_said = true
+          }
+        } else if act == "lever" {
+          var name = null
+          if is_content(toks, i, forms) {
+            name = ident(toks[i].w)
+            i += 1
+          }
+          let n = take_number()
+          if name == null or n == null {
+            m.gaps = push(m.gaps, { what: "the lever's name and number", say: "lever <name> <number>" })
+          } else {
+            option(name, n)
+          }
+        } else if act == "whatif" {
+          var ev = []
+          while is_content(toks, i, forms) {
+            ev = push(ev, ident(toks[i].w))
+            i += 1
+          }
+          var target = null
+          if len(ev) > 0 { target = join(ev, "_") }
+          m.whatifs = push(m.whatifs, target)
+        } else if act == "if" {
+          if len(event) > 0 { handler = join(event, "_") }
+          cond = { field: null, cmp: null, opt: null, then: [], otherwise: [] }
+          mode = "cond"
+          if is_content(toks, i, forms) {
+            cond.field = ident(toks[i].w)
+            add_field(cond.field)
+            focus = cond.field
+            i += 1
+          } else {
+            cond.field = focus
+          }
+        } else if act == "then" {
+          branch = "then"
+          mode = ""
+        } else if act == "else" {
+          if cond == null {
+            m.gaps = push(m.gaps, { what: "an else with no if before it", say: "if <field> under <number> then … else …" })
+          } else {
+            branch = "else"
+          }
+          mode = ""
+        } else if act == "friction" {
+          m.friction = true
         } else if act == "door" {
           m.door = true
         } else if act == "record" {
@@ -196,14 +371,18 @@ fn understand(sentence) {
         }
       } else {
         let t = toks[i]
-        if lex.filler contains t.w {
+        if lex.filler contains t.w or t.w == "percent" {
           // carries no instruction
         } else if mode == "fields" and not is_number(t.w) {
           let fd = ident(t.w)
-          if not (m.fields contains fd) { m.fields = push(m.fields, fd) }
+          add_field(fd)
           focus = fd
         } else if mode == "event" {
           event = push(event, ident(t.w))
+        } else if mode == "cond" and cond != null and cond.field == null {
+          cond.field = ident(t.w)
+          add_field(cond.field)
+          focus = cond.field
         } else if m.fields contains ident(t.w) {
           focus = ident(t.w)
         } else {
@@ -212,11 +391,34 @@ fn understand(sentence) {
         i += 1
       }
     }
+    if cond != null {
+      if cond.cmp == null {
+        m.gaps = push(m.gaps, { what: "the condition after if", say: "if <field> under <number> then …" })
+      } else {
+        steps = push(steps, { op: "if", field: cond.field, cmp: cond.cmp, opt: cond.opt, then: cond.then, otherwise: cond.otherwise })
+      }
+    }
+    if len(event) > 0 and len(steps) == 0 and len(m.handlers) == 0 { handler = join(event, "_") }
+    if len(steps) > 0 { add_steps(handler, steps) }
   }
+  var gs = []
+  for g in m.gates {
+    if g.kind == "max" and g.field == null and len(m.fields) == 0 { m.gaps = push(m.gaps, { what: "what at most applies to", say: "<field> at most <number>" }) }
+    var targets = m.fields
+    if g.field != null { targets = [g.field] }
+    for f in targets {
+      var opt = null
+      if g.kind == "max" { opt = option("max_" + f, g.n) }
+      gs = push(gs, { kind: g.kind, field: f, opt: opt })
+    }
+  }
+  m.gates = gs
   if m.kind == null { m.gaps = push(m.gaps, { what: "what it is", say: "a compartment, component, sovereign system or program" }) }
   if m.name == null { m.gaps = push(m.gaps, { what: "what it is called", say: "called <Name>" }) }
   if m.kind == "compartment" and len(m.fields) == 0 { m.gaps = push(m.gaps, { what: "what it holds", say: "with <field>" }) }
-  if m.kind == "component" and not m.door and len(m.events) == 0 { m.gaps = push(m.gaps, { what: "how it is reached", say: "with a door, or when <event> add <field>" }) }
+  if m.kind == "component" and not m.door and len(m.handlers) == 0 { m.gaps = push(m.gaps, { what: "how it is reached", say: "with a door, or when <event> add <field>" }) }
+  if m.kind == "component" and m.friction { m.gaps = push(m.gaps, { what: "friction is a compartment's gate (a component's boundary always holds)", say: "a compartment called …" }) }
+  if m.gaps_used and not m.tension_said { option("tension", 0.5) }
   return m
 }
 
@@ -224,59 +426,103 @@ fn understand(sentence) {
 fn q(s) = "\"" + replace(replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), ob(), "\\" + ob()), cb(), "\\" + cb()) + "\""
 fn state_line(m) {
   var parts = []
-  for f in m.fields { parts = push(parts, "{f}: 0") }
+  for f in m.fields { parts = push(parts, "{f}: start.{f}") }
   return "state " + ob() + " " + join(parts, ", ") + " " + cb()
 }
-fn gate_lines(m, word) {
+// the gates, each on one field; a max gate reads its option (named in understand)
+fn gates(m) {
   var out = []
+  var seen = []
   for g in m.gates {
-    var targets = m.fields
-    if g.field != null { targets = [g.field] }
-    for f in targets {
-      if g.kind == "nonneg" { out = push(out, "  {word} {f}_never_negative " + ob() + " state.{f} >= 0 " + cb()) }
-      if g.kind == "max" { out = push(out, "  {word} {f}_at_most_{g.n} " + ob() + " state.{f} <= {g.n} " + cb()) }
+    let f = g.field
+    let key = "{g.kind}:{f}"
+    if not (seen contains key) {
+      seen = push(seen, key)
+      if g.kind == "nonneg" { out = push(out, { name: "{f}_never_negative", cond: "state.{f} >= 0", f: f, check: ">= 0", say: "{f} never negative" }) }
+      if g.kind == "max" { out = push(out, { name: "{f}_at_most", cond: "state.{f} <= o.{g.opt}", f: f, check: "<= o.{g.opt}", say: "{f} at most its max" }) }
     }
   }
-  return unique(out)
+  return out
 }
 fn snapshot(m) {
   var parts = []
   for f in m.fields { parts = push(parts, "{f}: state.{f}") }
   return ob() + " " + join(parts, ", ") + " " + cb()
 }
-fn change(f, d) {
-  if d >= 0 { return "state.{f} += {d}" }
-  return "state.{f} -= {0 - d}"
+fn payload(m) {
+  if m.kind == "compartment" { return ob() + cb() }
+  return ob() + " value: 1 " + cb()
+}
+fn step_lines(m, s, pad) {
+  let low = lower(m.name)
+  if s.op == "add" { return [pad + "state.{s.field} += o.{s.opt}"] }
+  if s.op == "sub" { return [pad + "state.{s.field} -= o.{s.opt}"] }
+  if s.op == "compound" { return [pad + "state.{s.field} += state.{s.field} * o.{s.opt}"] }
+  if s.op == "gap" { return [pad + "gap {q(s.text)} pressure o.tension"] }
+  if s.op == "ripple" {
+    if m.kind == "compartment" { return [pad + "emit \"{low}.{s.to}\" " + snapshot(m)] }
+    return [pad + "emit out {s.to} " + snapshot(m)]
+  }
+  if s.op == "if" {
+    var L = [pad + "if state.{s.field} {s.cmp} o.{s.opt} " + ob()]
+    for t in s.then { L = L + step_lines(m, t, pad + "  ") }
+    if len(s.otherwise) > 0 {
+      L = push(L, pad + cb() + " else " + ob())
+      for t in s.otherwise { L = L + step_lines(m, t, pad + "  ") }
+    }
+    return push(L, pad + cb())
+  }
+  return []
+}
+fn ripples(m) {
+  var out = []
+  fn walk(steps) {
+    for s in steps {
+      if s.op == "ripple" and not (out contains s.to) { out = push(out, s.to) }
+      if s.op == "if" {
+        walk(s.then)
+        walk(s.otherwise)
+      }
+    }
+  }
+  for h in m.handlers { walk(h.steps) }
+  return out
 }
 
 fn source(m) {
   let n = m.name
   let low = lower(n)
-  var L = ["// {low}.eg — written by eg say from his words. Run: eg run {low}.eg"]
+  var L = ["// {low}.eg — written by eg say from his words. Its numbers and starting data are in {low}.node: change them there."]
   if m.kind == "program" {
     if m.intent != null { L = push(L, "// end state: {m.intent}") }
     L = push(L, "let name = {q(n)}")
     L = push(L, "print(\"hello from\", name)")
     return join(L, "\n") + "\n"
   }
+  let gs = gates(m)
+  L = push(L, "use \"./{low}.node\" as node")
+  L = push(L, "let o = node.payload.options")
+  L = push(L, "let start = node.payload.start")
+  let names = map(m.handlers, fn(h) = h.name)
+  let rs = filter(ripples(m), fn(r) = not (names contains r))
   if m.kind == "compartment" {
     L = push(L, "compartment {n} " + ob())
     L = push(L, "  id = \"{low}.main\"")
     if m.intent != null { L = push(L, "  intent = {q(m.intent)}") }
     L = push(L, "  " + state_line(m))
-    for g in gate_lines(m, "constraint") { L = push(L, replace(g, "_never_negative ", "_never_negative hard ")) }
-    for ev in m.events {
-      L = push(L, "  on \"{low}.{ev.name}\" (e) " + ob())
-      L = push(L, "    " + change(ev.field, ev.delta))
-      if m.record { L = push(L, "    record \"{low}.{ev.name}\" " + snapshot(m)) }
+    var kind = "hard"
+    if m.friction { kind = "soft" }
+    for g in gs { L = push(L, "  constraint {g.name} {kind} " + ob() + " {g.cond} " + cb()) }
+    for h in m.handlers {
+      L = push(L, "  on \"{low}.{h.name}\" (e) " + ob())
+      for s in h.steps { L = L + step_lines(m, s, "    ") }
+      if m.record { L = push(L, "    record \"{low}.{h.name}\" " + snapshot(m)) }
       L = push(L, "  " + cb())
     }
     if m.door { L = push(L, "  on \"{low}.in\" (e) " + ob() + " emit \"{low}.out\" " + snapshot(m) + " " + cb()) }
     L = push(L, cb())
     if m.door { L = push(L, "on \"{low}.out\" (e) " + ob() + " print(\"{n} out\", e) " + cb()) }
-    for ev in unique(map(m.events, fn(x) = x.name)) { L = push(L, "emit \"{low}.{ev}\" " + ob() + cb()) }
-    if m.door { L = push(L, "emit \"{low}.in\" " + ob() + cb()) }
-    L = push(L, "print(\"{n}\", {n}.state)")
+    for r in rs { L = push(L, "on \"{low}.{r}\" (e) " + ob() + " print(\"ripple: {r}\", e) " + cb()) }
   } else {
     // a component (a sovereign system is a component with a door)
     L = push(L, "component {n} " + ob())
@@ -285,13 +531,13 @@ fn source(m) {
     L = push(L, "  version = \"1.0.0\"")
     if m.intent != null { L = push(L, "  intent = {q(m.intent)}") }
     if len(m.fields) > 0 { L = push(L, "  " + state_line(m)) }
-    for g in gate_lines(m, "boundary") { L = push(L, g) }
+    for g in gs { L = push(L, "  boundary {g.name} " + ob() + " {g.cond} " + cb()) }
     var outs = []
     for f in m.fields { outs = push(outs, "{f}: num") }
-    for ev in unique(map(m.events, fn(x) = x.name)) {
-      L = push(L, "  in {ident(ev)}(x: " + ob() + " value: num " + cb() + ") " + ob())
-      for e in filter(m.events, fn(x) = x.name == ev) { L = push(L, "    " + change(e.field, e.delta)) }
-      if m.record { L = push(L, "    record \"{low}.{ev}\" " + snapshot(m)) }
+    for h in m.handlers {
+      L = push(L, "  in {ident(h.name)}(x: " + ob() + " value: num " + cb() + ") " + ob())
+      for s in h.steps { L = L + step_lines(m, s, "    ") }
+      if m.record { L = push(L, "    record \"{low}.{h.name}\" " + snapshot(m)) }
       L = push(L, "  " + cb())
     }
     if m.door {
@@ -301,30 +547,42 @@ fn source(m) {
       L = push(L, "  " + cb())
       L = push(L, "  out result: " + ob() + " " + join(outs, ", ") + " " + cb())
     }
+    for r in ripples(m) { L = push(L, "  out {r}: " + ob() + " " + join(outs, ", ") + " " + cb()) }
     L = push(L, cb())
-    for ev in unique(map(m.events, fn(x) = x.name)) { L = push(L, "wire \"{low}.{ev}\" -> {n}.{ident(ev)}") }
+    for h in m.handlers { L = push(L, "wire \"{low}.{h.name}\" -> {n}.{ident(h.name)}") }
+    for r in ripples(m) {
+      L = push(L, "wire {n}.{r} -> \"{low}.{r}\"")
+      L = push(L, "on \"{low}.{r}\" (e) " + ob() + " print(\"ripple: {r}\", e) " + cb())
+    }
     if m.door {
       L = push(L, "wire \"{low}.in\" -> {n}.input")
       L = push(L, "wire {n}.result -> \"{low}.out\"")
       L = push(L, "on \"{low}.out\" (r) " + ob() + " print(\"{n}\", r) " + cb())
     }
-    for ev in unique(map(m.events, fn(x) = x.name)) { L = push(L, "emit \"{low}.{ev}\" " + ob() + " value: 1 " + cb()) }
-    if m.door { L = push(L, "emit \"{low}.in\" " + ob() + " value: 1 " + cb()) }
-    if len(m.fields) > 0 { L = push(L, "print(\"{n}\", {n}.state)") }
   }
+  if m.gaps_used { L = push(L, "on \"gap.opened\" (g) " + ob() + " print(\"gap:\", g.message) " + cb()) }
+  // what if: a preview in a fork; the real state is untouched
+  for k, w in m.whatifs {
+    var ev = w ?? (names[0] ?? null)
+    if ev != null {
+      L = push(L, "let what_if_{k + 1} = whatif " + ob())
+      L = push(L, "  emit \"{low}.{ev}\" " + payload(m))
+      L = push(L, "  {n}.state")
+      L = push(L, cb())
+      L = push(L, "print(\"what if {ev}:\", what_if_{k + 1}, \"— still:\", {n}.state)")
+    }
+  }
+  for h in m.handlers { L = push(L, "emit \"{low}.{h.name}\" " + payload(m)) }
+  if m.door { L = push(L, "emit \"{low}.in\" " + payload(m)) }
+  if len(m.fields) > 0 { L = push(L, "print(\"{n}\", {n}.state)") }
   if m.test {
     L = push(L, "")
     L = push(L, "test \"{n} keeps its gates\" " + ob())
-    for ev in unique(map(m.events, fn(x) = x.name)) {
-      if m.kind == "compartment" { L = push(L, "  emit \"{low}.{ev}\" " + ob() + cb()) } else { L = push(L, "  emit \"{low}.{ev}\" " + ob() + " value: 1 " + cb()) }
-    }
+    for h in m.handlers { L = push(L, "  emit \"{low}.{h.name}\" " + payload(m)) }
     var checks = 0
-    for g in m.gates {
-      var targets = m.fields
-      if g.field != null { targets = [g.field] }
-      for f in targets {
-        if g.kind == "nonneg" { L = push(L, "  expect {n}.state.{f} >= 0, \"{f} never negative\"") }
-        if g.kind == "max" { L = push(L, "  expect {n}.state.{f} <= {g.n}, \"{f} at most {g.n}\"") }
+    if not m.friction {
+      for g in gs {
+        L = push(L, "  expect {n}.state.{g.f} {g.check}, \"{g.say}\"")
         checks += 1
       }
     }
@@ -332,6 +590,36 @@ fn source(m) {
     L = push(L, cb())
   }
   return join(L, "\n") + "\n"
+}
+
+// ── the node file: his envelope, in JSON form (JSON is valid YAML) ────────────
+fn node(m) {
+  let low = lower(m.name)
+  var opts = []
+  for o in m.options { opts = push(opts, "      {q(o.name)}: {str(o.value)}") }
+  var st = []
+  for f in m.fields { st = push(st, "      {q(f)}: 0") }
+  var intent = "null"
+  if m.intent != null { intent = q(m.intent) }
+  var L = [ob(),
+    "  \"envelope\": 1,",
+    "  \"uuid\": \"emerge-say-{low}-node\",",
+    "  \"type\": \"options\",",
+    "  \"id\": \"{low}\",",
+    "  \"intent\": {intent},",
+    "  \"summary\": \"the levers and starting data of {m.name}, written by eg say from his words. Change them here, not in {low}.eg.\",",
+    "  \"system\": \"{low}\",",
+    "  \"tags\": [\"eg say\"],",
+    "  \"payload\": " + ob(),
+    "    \"options\": " + ob()]
+  L = push(L, join(opts, ",\n"))
+  L = push(L, "    " + cb() + ",")
+  L = push(L, "    \"start\": " + ob())
+  L = push(L, join(st, ",\n"))
+  L = push(L, "    " + cb())
+  L = push(L, "  " + cb())
+  L = push(L, cb())
+  return join(filter(L, fn(l) = l != ""), "\n") + "\n"
 }
 
 // ── the report: what was understood, in his words, with his quote ──────────────
@@ -350,6 +638,11 @@ fn report(m) {
     }
   }
   if m.kind != null { L = push(L, "  so: a {m.kind} called {m.name ?? "?"}") }
+  if len(m.options) > 0 and len(m.gaps) == 0 {
+    L = push(L, "levers, in {lower(m.name ?? "it")}.node (change them there, not in the code):")
+    for o in m.options { L = push(L, "  {o.name} = {str(o.value)}") }
+    if m.gaps_used and not m.tension_said { L = push(L, "  (tension was not said: 0.5 is in the node file, set it there or say tension <number>)") }
+  }
   if len(m.gaps) > 0 {
     L = push(L, "gaps (nothing guessed):")
     for g in m.gaps { L = push(L, "  {g.what} — say: {g.say}") }
@@ -390,8 +683,12 @@ if len(a) == 0 { raise("usage: say \"<sentence>\" | teach \"<phrase>\" <word> | 
 if a[0] == "say" {
   let m = understand(a[1] ?? "")
   var src = ""
-  if len(m.gaps) == 0 { src = source(m) }
-  print(json({ ok: len(m.gaps) == 0, name: lower(m.name ?? ""), source: src, report: report(m) }))
+  var nd = ""
+  if len(m.gaps) == 0 {
+    src = source(m)
+    if m.kind != "program" { nd = node(m) }
+  }
+  print(json({ ok: len(m.gaps) == 0, name: lower(m.name ?? ""), source: src, node: nd, report: report(m) }))
 } else if a[0] == "teach" {
   print(json(teach(a[1] ?? "", a[2] ?? "")))
 } else if a[0] == "words" {

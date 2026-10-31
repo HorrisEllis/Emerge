@@ -81,7 +81,7 @@ let words = [
   },
   {
     forms: ["at most", "no more than", "max", "maximum", "capped at"],
-    means: "a gate: the value never goes above the number",
+    means: "a gate: the value never goes above the number (the number is an option in the node file); inside an if, a comparison",
     does: "gate:max",
     from: [
       { said: "need to use nexus as persitent storage, each interaction gated, that way each gate can be a different agent, using the ledgers or previous conversations, or anything as a way to use nexus for consistencey across domains. a tool to request lines from a file to copy to the worksurface or a new file to edit so it can be tiny amounts of code. like i want to make nexus hold as much as possible, as much data, and checkpoints that can save our progress the better. need to be able to change the intent map and routing. like all data in the repo needs to persist. mapping, gathering context from the dependancies look at the phases from today, get this working with new context gathering methods, and intent routing, all the phases from today and yesterday that will idearium working. profiles in clearlgas that can link to hats. multiaccunt setup in clearglass, using porofiles?", date: "2026-07-11", where: "Nexus docs/his-words Q0008 · idearium/api/index.js:3708" }
@@ -96,17 +96,16 @@ let words = [
     ]
   },
   {
-    forms: ["add", "adds", "increase", "increases", "count", "counts", "plus", "increment", "grow", "grows"],
-    means: "adds to a value (by 1, or by the number said)",
+    forms: ["add", "adds", "increase", "increases", "count", "counts", "plus", "increment"],
+    means: "adds to a value (by 1, or by the number said; the number is an option in the node file)",
     does: "add",
     from: [
-      { said: "emerge is meant to cut down 90% of tokens, warp some and speed it up and compound it, if it doesn't compound yet add that.", date: "2026-07-09", where: "Nexus docs/his-words Q0003 · docs/warp-devkit-addendum-v1.4.1.spec:13" },
       { said: "we need to make compartments in idearium for nexus, and add support for nested compartments, like increments of zoom.", date: "2026-09-22", where: "Nexus docs/his-words Q0644 · docs/nexus-repo-compartment-and-rich-dispatch-phasemap.spec:7" }
     ]
   },
   {
     forms: ["remove", "removes", "decrease", "decreases", "minus", "subtract", "drop", "drops"],
-    means: "takes from a value (by 1, or by the number said)",
+    means: "takes from a value (by 1, or by the number said; the number is an option in the node file)",
     does: "sub",
     from: [
       { said: "emerge is meant to cut down 90% of tokens, warp some and speed it up and compound it, if it doesn't compound yet add that.", date: "2026-07-09", where: "Nexus docs/his-words Q0003 · docs/warp-devkit-addendum-v1.4.1.spec:13" }
@@ -129,8 +128,116 @@ let words = [
       { said: "It's supposed to add addendums as a living record as it moves through the system.", date: "2026-07-24", where: "Nexus docs/his-words Q0014 · lib/contract-queue.js:83" },
       { said: "make sure each failure mode is logged to cortex.", date: "2026-08-12", where: "Nexus docs/his-words Q0061 · copilot/lifeline.js:192" }
     ]
+  },
+  {
+    forms: ["friction", "with friction", "frictional", "resists", "resistance"],
+    means: "a gate resists at a cost instead of refusing: the change goes through and its cost is counted (a soft constraint)",
+    does: "friction",
+    from: [
+      { said: "autopilot needs a massive update — it's not encompassing enough. All logs, error logs, ledgers, event types, gaps, tension, friction, sigmas, changes. All movement.", date: "2026-08-08", where: "Nexus docs/his-words Q0039 · lib/movement.js:8" },
+      { said: "Friction & Rhythm Detection — Tracks response latency spikes, shifts to closed language, defensive word clusters (\"always,\" \"never,\" \"fine\"). Pre-rupture markers weighted higher in lattice.", date: "undated", where: "Eravos Eravos.md:1165" }
+    ]
+  },
+  {
+    forms: ["tension", "pressure"],
+    means: "how hard a gap pulls: its pressure, an option in the node file",
+    does: "tension",
+    from: [
+      { said: "I want to use delta to measure the tension gaps... no hardcoded. dynamic updating over time.", date: "2026-08-23", where: "Nexus docs/his-words Q0157 · intelligence/cfr/ledger.js:43" }
+    ]
+  },
+  {
+    forms: ["gap", "gaps", "missing", "silence"],
+    means: "missing structure: a gap opened and recorded, never a silent skip",
+    does: "gap",
+    from: [
+      { said: "i want any gaps to be mapped to the intelligence system", date: "2026-10-15", where: "Nexus docs/his-words Q1286 · docs/2026-10-15-capability-specs-and-semantic-page-tree-phasemap.spec:99" }
+    ]
+  },
+  {
+    forms: ["compound", "compounds", "compounding", "grow", "grows", "grows by"],
+    means: "growth in proportion to itself, by a rate (an option in the node file)",
+    does: "compound",
+    from: [
+      { said: "emerge is meant to cut down 90% of tokens, warp some and speed it up and compound it, if it doesn't compound yet add that.", date: "2026-07-09", where: "Nexus docs/his-words Q0003 · docs/warp-devkit-addendum-v1.4.1.spec:13" }
+    ]
+  },
+  {
+    forms: ["ripple", "ripples", "ripple to", "rippling", "sets off", "cascade", "cascades"],
+    means: "one change sets off the next event",
+    does: "ripple",
+    from: [
+      { said: "leverage. friction. tension. ripples. compound. a lot of eravos was my language, systemns thinking. what ifs, if thens, else,", date: "2026-10-31", where: "Emerge emerge/spec/say.spec (said to the coder)" }
+    ]
+  },
+  {
+    forms: ["leverage", "lever", "levers"],
+    means: "a lever: a named option in the node file, changed there, never in the code",
+    does: "lever",
+    from: [
+      { said: "yes. i want that with the option for per site pipelines. make sure macros, automations, and pipelines are interconnected. i build bottom up, and interconnected, and compound leverage", date: "2026-10-30", where: "Nexus docs/his-words Q1918 · docs/automation-pipelines.spec:222" },
+      { said: "Yes. We need the agents to use it. Also what about the .node types. Also combining primitives or invariants to build higher leverage code for less tokens.", date: "2026-10-05", where: "Nexus docs/his-words Q0921 · docs/2026-10-05-build-from-the-spec-phasemap.spec:519" },
+      { said: "only using hardcoded when neccarry, using external node files for data, options, etc.", date: "2026-10-31", where: "Emerge emerge/spec/say.spec (said to the coder)" }
+    ]
+  },
+  {
+    forms: ["what if", "what ifs", "whatif"],
+    means: "a preview: try it in a fork and see, the real state untouched",
+    does: "whatif",
+    from: [
+      { said: "what if we use each agent, in tandem with the raid engine as a council or court to make large decisions?", date: "2026-08-13", where: "Nexus docs/his-words Q0073 · lib/agent-council.js:9" },
+      { said: "leverage. friction. tension. ripples. compound. a lot of eravos was my language, systemns thinking. what ifs, if thens, else,", date: "2026-10-31", where: "Emerge emerge/spec/say.spec (said to the coder)" }
+    ]
+  },
+  {
+    forms: ["if", "if then"],
+    means: "a condition: what follows happens only when it holds",
+    does: "if",
+    from: [
+      { said: "leverage. friction. tension. ripples. compound. a lot of eravos was my language, systemns thinking. what ifs, if thens, else,", date: "2026-10-31", where: "Emerge emerge/spec/say.spec (said to the coder)" }
+    ]
+  },
+  {
+    forms: ["then"],
+    means: "what happens when the condition holds",
+    does: "then",
+    from: [
+      { said: "leverage. friction. tension. ripples. compound. a lot of eravos was my language, systemns thinking. what ifs, if thens, else,", date: "2026-10-31", where: "Emerge emerge/spec/say.spec (said to the coder)" }
+    ]
+  },
+  {
+    forms: ["else", "otherwise", "or else"],
+    means: "what happens when the condition does not hold",
+    does: "else",
+    from: [
+      { said: "leverage. friction. tension. ripples. compound. a lot of eravos was my language, systemns thinking. what ifs, if thens, else,", date: "2026-10-31", where: "Emerge emerge/spec/say.spec (said to the coder)" }
+    ]
+  },
+  {
+    forms: ["under", "below", "less than", "fewer than"],
+    means: "a comparison: less than the number",
+    does: "cmp:<",
+    from: [
+      { said: "leverage. friction. tension. ripples. compound. a lot of eravos was my language, systemns thinking. what ifs, if thens, else,", date: "2026-10-31", where: "Emerge emerge/spec/say.spec (said to the coder)" }
+    ]
+  },
+  {
+    forms: ["over", "above", "more than", "greater than"],
+    means: "a comparison: more than the number",
+    does: "cmp:>",
+    from: [
+      { said: "leverage. friction. tension. ripples. compound. a lot of eravos was my language, systemns thinking. what ifs, if thens, else,", date: "2026-10-31", where: "Emerge emerge/spec/say.spec (said to the coder)" }
+    ]
+  },
+  {
+    forms: ["at least", "no less than"],
+    means: "a comparison: the number or more",
+    does: "cmp:>=",
+    from: [
+      { said: "leverage. friction. tension. ripples. compound. a lot of eravos was my language, systemns thinking. what ifs, if thens, else,", date: "2026-10-31", where: "Emerge emerge/spec/say.spec (said to the coder)" }
+    ]
   }
 ]
 
 // his words that carry no instruction on their own (from the stripped index: docs/2026-10-31-his-words-stripped.md)
-let filler = ["a", "all", "also", "am", "an", "and", "any", "are", "arrive", "arrived", "arrives", "as", "at", "be", "been", "but", "by", "can", "come", "comes", "could", "did", "do", "does", "each", "every", "for", "from", "get", "gets", "got", "had", "happens", "has", "have", "here", "how", "i", "i'm", "im", "in", "into", "is", "it", "it's", "its", "just", "let", "let's", "lets", "like", "made", "make", "makes", "maybe", "me", "my", "need", "needs", "now", "of", "ok", "okay", "one", "or", "please", "received", "sent", "should", "so", "some", "stuff", "that", "the", "then", "there", "these", "thing", "things", "this", "those", "to", "want", "wants", "was", "we", "were", "what", "which", "who", "will", "would", "yeah", "yes", "you", "your"]
+let filler = ["a", "all", "also", "am", "an", "and", "any", "are", "arrive", "arrived", "arrives", "as", "at", "be", "been", "but", "by", "can", "come", "comes", "could", "did", "do", "does", "each", "every", "for", "from", "get", "gets", "got", "had", "happens", "has", "have", "here", "how", "i", "i'm", "im", "in", "into", "is", "it", "it's", "its", "just", "let", "let's", "lets", "like", "made", "make", "makes", "maybe", "me", "my", "need", "needs", "now", "of", "ok", "okay", "one", "or", "please", "received", "sent", "should", "so", "some", "stuff", "that", "the", "there", "these", "thing", "things", "this", "those", "to", "want", "wants", "was", "we", "were", "what", "which", "who", "will", "would", "yeah", "yes", "you", "your"]

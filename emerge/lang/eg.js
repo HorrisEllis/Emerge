@@ -108,7 +108,15 @@ function main(argv) {
       let errors = [], warnings = [];
       try {
         const g = lang.collectModules(file);
-        for (const m of g.modules) warnings.push(...m.warnings);
+        for (const m of g.modules) {
+          if (m.node) {
+            // a node file must be one JSON object (JSON is valid YAML)
+            try { const v = JSON.parse(fs.readFileSync(m.abs, 'utf8')); if (v === null || typeof v !== 'object' || Array.isArray(v)) throw new Error('a node file holds one object'); }
+            catch (e) { errors.push({ file: path.basename(m.abs), line: 1, col: 1, message: `node file: ${e.code === 'ENOENT' ? 'not found' : e.message}` }); }
+            continue;
+          }
+          warnings.push(...m.warnings);
+        }
       } catch (e) {
         if (e.name !== 'EmergeSyntaxError') throw e;
         errors.push({ file: e.file, line: e.line, col: e.col, message: e.bare });
@@ -286,13 +294,20 @@ function main(argv) {
         process.exitCode = 1;
         return;
       }
+      if (out.node) {
+        try { JSON.parse(out.node); } catch (e) { die('the node file is not valid JSON (no files written): ' + e.message, 1); }
+      }
       const { OUTPUT } = require('./ide');
       const dir = rest[1] || OUTPUT;
       fs.mkdirSync(dir, { recursive: true });
-      const file = path.join(dir, out.name.replace(/[^a-z0-9_]/g, '_') + '.eg');
-      if (fs.existsSync(file)) die(`error: ${file} exists`, 1);
+      const base = out.name.replace(/[^a-z0-9_]/g, '_');
+      const file = path.join(dir, base + '.eg');
+      const nodeFile = path.join(dir, base + '.node');
+      for (const f of out.node ? [file, nodeFile] : [file]) if (fs.existsSync(f)) die(`error: ${f} exists`, 1);
+      // his rule: the numbers and starting data live in the node file, beside the code
+      if (out.node) fs.writeFileSync(nodeFile, out.node);
       fs.writeFileSync(file, out.source);
-      process.stdout.write(`wrote ${file} (checks clean). run it: eg run ${file}\n`);
+      process.stdout.write(`wrote ${file}${out.node ? ` and ${path.basename(nodeFile)} (its levers and starting data)` : ''} — checks clean. run it: eg run ${file}\n`);
       return;
     }
     case 'repl': return repl();
