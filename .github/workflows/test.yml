@@ -42,6 +42,8 @@ jobs:
       - name: emerge — compiler tests (npm test, the whole suite)
         working-directory: emerge
         run: npm test
+      - name: learn — every lesson, interpreted, compiled, and eg say (docs/learn/verify.js)
+        run: node docs/learn/verify.js
 
       - name: tests left the checkout clean
         if: always()

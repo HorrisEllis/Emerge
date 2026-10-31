@@ -68,4 +68,4 @@ not done at all, and you are told which.
 2. Add `constraint fits hard { state.cookies <= 10 }` and try to overfill the jar.
 3. Make `fits` a `soft` rule with `cost 2` and print `spent()` at the end. What changed?
 
-**Next:** [3 · Parts that never touch](3-parts-that-never-touch.md)
+**Next:** [2½ · Say it in your words](2s-say-it.md)

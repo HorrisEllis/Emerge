@@ -64,19 +64,26 @@ how many Scales are alive: 2
 | Systems thinking | In Emerge |
 |---|---|
 | **Stock** (what accumulates) | a compartment's `state` |
-| **Flow** (what changes it) | signals, and the handlers they reach |
-| **Limit** | a `hard` constraint; a `soft` one is a limit with a cost (`spent()`) |
+| **Flow** (what changes it) | signals, and the handlers they reach; one that sets off the next is a **ripple** |
+| **Limit** | a `hard` constraint; a `soft` one is a limit with a cost (`spent()`): **friction** |
+| **Reinforcing loop** | growth in proportion to itself (`state.x += state.x * rate`): **compound** |
 | **Identity** (what must stay true for it to be itself) | `boundary` |
 | **Interface** | hooks and their shapes |
 | **Structure** | wires; exported as a graph with `eg components` |
 | **Feedback loop** | a wire path that returns to where it started (`examples/primitives.eg` wires a loop) |
-| **Delay and unknowns** | gaps, with type and pressure |
+| **Delay and unknowns** | gaps, with type and pressure; the pressure is the gap's **tension** |
 | **Memory** | the ledger |
-| **Experiment** | `whatif` |
+| **Experiment** | `whatif`: **what if** |
 | **Leverage point** | a kind, a template, or the language's own primitives ([level 6](6-the-core.md)): change one, and everything built from it changes |
 
 Leverage rises as you go down that table's last row: a value changes one thing, a template changes every instance, a kind
-changes everything that claims it, and a primitive changes the language.
+changes everything that claims it, and a primitive changes the language. The words in bold are James's own systems
+vocabulary (his ERAVOS work); [level 2½](2s-say-it.md) uses them directly.
+
+**Keep the values out of the code.** His rule, 2026-10-31: *"only using hardcoded when neccarry, using external node files
+for data, options, etc."* The first rung of leverage, a value, belongs in a node file: `use "./line.node" as node`, then
+`node.payload.options.factor`. Change the node file and the system shifts, with no change to the code. `eg say` writes
+code this way ([level 2½](2s-say-it.md)).
 
 ## Your turn
 

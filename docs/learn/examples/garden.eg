@@ -1,0 +1,31 @@
+// garden.eg — written by eg say from his words. Its numbers and starting data are in garden.node: change them there.
+use "./garden.node" as node
+let o = node.payload.options
+let start = node.payload.start
+compartment Garden {
+  id = "garden.main"
+  state { plants: start.plants }
+  constraint plants_at_most soft { state.plants <= o.max_plants }
+  on "garden.rain_falls" (e) {
+    state.plants += o.rain_falls_plants_by
+    state.plants += state.plants * o.plants_rate
+    emit "garden.bloom" { plants: state.plants }
+    if state.plants > o.rain_falls_plants_over {
+      gap "the garden is crowded" pressure o.tension
+    }
+  }
+}
+on "garden.bloom" (e) { print("ripple: bloom", e) }
+on "gap.opened" (g) { print("gap:", g.message) }
+let what_if_1 = whatif {
+  emit "garden.rain_falls" {}
+  Garden.state
+}
+print("what if rain_falls:", what_if_1, "— still:", Garden.state)
+emit "garden.rain_falls" {}
+print("Garden", Garden.state)
+
+test "Garden keeps its gates" {
+  emit "garden.rain_falls" {}
+  expect true, "Garden runs"
+}

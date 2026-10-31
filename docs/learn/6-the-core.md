@@ -66,7 +66,8 @@ cd emerge/lang/native
 ./bin/emerge emerge.eg -o bin/emerge        # stage 2 must equal stage 1, byte for byte
 ```
 
-`lang/test/selfhost.test.js` checks the three stages; `lang/test/native.test.js` runs 72 programs both ways. The end
+`lang/test/selfhost.test.js` checks the three stages; `lang/test/native.test.js` runs 91 programs both ways, fractional
+numbers included (IEEE doubles, printed and parsed exactly as the interpreter does). The end
 state (§0): `emerge.exe` replaces `node.exe`, with no Node, npm or JavaScript in the finished system.
 
 ## Change the language itself
@@ -88,7 +89,7 @@ failed candidate stays in `build/next` for you to inspect.
 
 ```
 cd emerge
-npm run test:lang                    # language, differential, bootstrap, IDE, ledger, native, self-host
+npm run test:lang                    # language, differential, bootstrap, IDE, ledger, native, self-host, eg say
 node ../docs/learn/verify.js         # every lesson program, interpreted and compiled
 ```
 

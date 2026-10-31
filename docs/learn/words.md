@@ -22,3 +22,10 @@ Each word twice: **plainly**, then **exactly**.
 | **template** | A cookie cutter | A component with parameters; `spawn` makes instances, `despawn` removes one and its wires |
 | **promote** | Say "this is ready", with proof | `promote "x" with proof expr`; a false proof refuses it and opens a gap |
 | **seed** | The dice's starting point | `--seed N`; `random()` and `uid()` draw from it, so one program and one seed give one ledger |
+| **friction** | Resistance that costs something, but does not stop you | A `soft` constraint: a change that breaks it still commits, and its cost is added to `spent()` (his word; ERAVOS: "an edge exists but its interaction produces resistance") |
+| **tension** | How hard something unresolved pulls | A gap's pressure, kept as an option in a node file |
+| **ripple** | One change setting off the next | An event emitted by a handler, which another handler hears |
+| **compound** | Growth that grows itself | `state.x += state.x * rate`, the rate an option in a node file |
+| **lever** | One value that shifts the whole system | A named option in a node file; changed there, never in the code |
+| **node file** | The settings and starting data, kept outside the code | His node envelope (`envelope`, `id`, `type`, `payload` …) in JSON form, loaded with `use "./x.node" as node` |
+| **eg say** | Write a program by saying it | Reads a sentence against his vocabulary, writes `<name>.eg` and `<name>.node`, shows each word's source quote, names every gap; no AI |

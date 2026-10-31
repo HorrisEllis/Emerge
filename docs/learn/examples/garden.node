@@ -1,0 +1,22 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-say-garden-node",
+  "type": "options",
+  "id": "garden",
+  "intent": null,
+  "summary": "the levers and starting data of Garden, written by eg say from his words. Change them here, not in garden.eg.",
+  "system": "garden",
+  "tags": ["eg say"],
+  "payload": {
+    "options": {
+      "rain_falls_plants_by": 3,
+      "plants_rate": 0.1,
+      "rain_falls_plants_over": 40,
+      "tension": 0.7,
+      "max_plants": 50
+    },
+    "start": {
+      "plants": 0
+    }
+  }
+}

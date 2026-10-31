@@ -1,0 +1,5 @@
+ripple: bloom {plants: 3.3}
+what if rain_falls: {plants: 3.3} — still: {plants: 0}
+ripple: bloom {plants: 3.3}
+Garden {plants: 3.3}
+exit 0

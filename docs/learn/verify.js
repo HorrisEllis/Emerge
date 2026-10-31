@@ -3,6 +3,7 @@
 // docs/learn/verify.js — the tutorial cannot drift from the language.
 // Every lesson program in examples/ is run twice, interpreted (eg run) and compiled (eg build, then node), and both
 // outputs (stdout and stderr) must equal the recorded examples/<name>.out. `--record` rewrites the .out files.
+// A .say file (a sentence in his words) must still make eg say write exactly the lesson's .eg and .node.
 // Run from anywhere: node docs/learn/verify.js [--record]
 const fs = require('fs'), os = require('os'), path = require('path'), { spawnSync } = require('child_process');
 const HERE = __dirname, EG = path.join(HERE, '..', '..', 'emerge', 'lang', 'eg.js'), EX = path.join(HERE, 'examples');
@@ -21,6 +22,18 @@ for (const f of fs.readdirSync(EX).filter(n => n.endsWith('.eg')).sort()) {
   const ok = interpreted === expected && built === expected;
   ok ? pass++ : fail++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${f}${ok ? '' : interpreted !== expected ? '  (interpreted differs from .out)' : '  (compiled differs from interpreted)'}`);
+}
+// a .say file holds a sentence in his words: eg say must still write exactly the .eg and .node the lesson shows
+for (const f of fs.readdirSync(EX).filter(n => n.endsWith('.say')).sort()) {
+  const sentence = fs.readFileSync(path.join(EX, f), 'utf8').trim();
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'eg-say-'));
+  const r = spawnSync(process.execPath, [EG, 'say', sentence, out], { encoding: 'utf8' });
+  const made = fs.readdirSync(out).sort();
+  let ok = r.status === 0 && made.length > 0;
+  for (const m of made) ok = ok && fs.existsSync(path.join(EX, m)) && fs.readFileSync(path.join(EX, m), 'utf8') === fs.readFileSync(path.join(out, m), 'utf8');
+  fs.rmSync(out, { recursive: true, force: true });
+  ok ? pass++ : fail++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${f}${ok ? ' (eg say writes ' + made.join(' and ') + ', as the lesson shows)' : '  (eg say no longer writes what the lesson shows' + (r.status !== 0 ? ': ' + (r.stdout + r.stderr).trim().split('\n').pop() : '') + ')'}`);
 }
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
