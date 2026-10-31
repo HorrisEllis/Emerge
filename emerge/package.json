@@ -1,6 +1,6 @@
 {
   "name": "spec-compiler",
-  "version": "1.7.2",
+  "version": "1.8.0",
   "description": "Compress intent. Decompress deterministically. Pay tokens once.",
   "type": "commonjs",
   "main": "compiler/pipeline.js",

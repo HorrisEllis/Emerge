@@ -105,7 +105,80 @@ const CASES = {
   'try catches with message, line and file': `try {\n  print("in")\n  raise("boom")\n  print("not")\n} else e {\n  print("caught", e)\n}\nfn inner(n) {\n  if n == 0 { raise("deep") }\n  return inner(n - 1)\n}\ntry { inner(5) } else e { print(e) }\ntry { print([1][3]) } else e { print(e.message) }\ntry { print(1 + "a" - 1) } else e { print(e.message) }`,
   'nested try and rethrow': `try {\n  try { raise("one") } else e { raise("two: " + e.message) }\n} else e2 { print(e2.message, e2.line) }\ntry { print("fine") } else e { print("no") }\nprint("after")`,
   'return, break and skip leave a try': `fn risky(n) {\n  try {\n    if n > 1 { return "early" }\n    return [1][n]\n  } else e {\n    return "err: " + e.message\n  }\n}\nprint(risky(0), risky(1), risky(5))\nfor k in 0..4 {\n  try {\n    if k == 1 { skip }\n    if k == 3 { break }\n    print("k", k)\n  } else e { print("no") }\n}\ntry { raise("after loop") } else e { print(e.message) }\nvar total = 0\nfor i in 0..100 {\n  try {\n    if i % 3 == 0 { raise("x") }\n    total += i\n  } else e { total -= 1 }\n}\nprint(total)`,
-  'an error after a try is not caught': { src: `try { print("a") } else e { print("no") }\nraise("out")`, code: 1 },
+  'an error after a try is not caught': { src: `try { print("a") } else e { print("no") }\nraise("out")`, code: 1 },  // ── 2026-10-31: strings are code points (CIE-EG §2) in both backends; the functions moved from JavaScript into core/prelude.eg ──
+  'strings are code points': `let s = "a😀é😀b"\nprint(len(s), s[1], s[-1], slice(s, 1, 3), split(s, ""), find_text(s, "é"), reverse(s), "😀" > utf8(bytes([0xEE, 0x80, 0x80])), "a" < "b")`,
+  'moved to the prelude: every case, ok and refused': String.raw`fn t(name, f) {
+  try { print(name, repr(f())) } else e { print(name, "ERR", e.message) }
+}
+t("ceil s", fn() = ceil("x"))
+t("ceil i", fn() = ceil(2i))
+t("round s", fn() = round(null))
+t("abs min", fn() = abs(-9223372036854775807i - 1i))
+t("abs s", fn() = abs("a"))
+t("sort map1", fn() = sort([{a: 1}]))
+t("sort mixed", fn() = sort([1, "a"]))
+t("sort ints", fn() = sort([2i, 1i]))
+t("sort maps", fn() = sort([{}, {}]))
+t("sort nl", fn() = sort("abc"))
+fn sort_copy() {
+  let a = [1]
+  var b = sort(a)
+  b[0] = 9
+  return [a, b]
+}
+t("sort copy", sort_copy)
+fn clone_case() {
+  let a = {x: [1, {y: 2}], "2": 3, "1": 4, b: "s"}
+  var c = clone(a)
+  c.x[1].y = 9
+  return [a, c, clone(5), clone("s"), clone(null), clone([]), clone(bytes([1]))]
+}
+t("clone", clone_case)
+t("trim", fn() = [trim("  a b  "), trim("\t\n\r x \r\n"), trim(""), trim("   "), trim("é"), trim(" 😀 ")])
+t("trim wide", fn() = [len(trim(utf8(bytes([0xC2, 0xA0, 0x61, 0xE3, 0x80, 0x80, 0xEF, 0xBB, 0xBF])))), len(trim(utf8(bytes([0xE2, 0x80, 0x8B, 0x61]))))])
+t("trim vt", fn() = len(trim(utf8(bytes([11, 12, 97, 0xE2, 0x80, 0xA8, 0xE2, 0x80, 0xA9, 0xE1, 0x9A, 0x80, 0xE2, 0x80, 0x8A, 0xE2, 0x80, 0xAF, 0xE2, 0x81, 0x9F, 0xC2, 0x85])))))
+t("trim n", fn() = trim(1))
+t("replace", fn() = [replace("a.b.c", ".", "-"), replace("aaa", "a", "bb"), replace("", "x", "y"), replace("ab", "", "-"), replace("é😀", "", "|")])
+t("replace n", fn() = replace("a", 1, "b"))
+t("replace n3", fn() = replace("a", "a", null))
+t("hex", fn() = [hex(bytes([])), hex(bytes([0, 15, 16, 255]))])
+t("hex s", fn() = hex("ab"))
+t("from_hex", fn() = [from_hex(""), from_hex("00ff10Ab"), from_hex("DEADbeef")])
+t("from_hex odd", fn() = from_hex("abc"))
+t("from_hex bad", fn() = from_hex("zz"))
+t("from_hex uni", fn() = from_hex("é1"))
+t("from_hex n", fn() = from_hex(5))
+t("u8", fn() = [u8(0), u8(255), u8(7i)])
+t("u8 big", fn() = u8(256))
+t("u8 neg", fn() = u8(-1))
+t("u8 str", fn() = u8("1"))
+t("u16", fn() = [u16le(258), u16be(258), u16le(65535)])
+t("u16 big", fn() = u16be(65536))
+t("u32", fn() = [u32le(4294967295), u32be(305419896), u32le(0)])
+t("u32 big", fn() = u32le(4294967296))
+t("u64", fn() = [u64le(1), u64be(258i), u64le(9223372036854775807i), u64be(9007199254740991)])
+t("u64 neg", fn() = u64le(-1i))
+t("u64 unsafe", fn() = u64le(9007199254740992))
+t("i32", fn() = [i32le(-1), i32le(-2147483648), i32le(2147483647)])
+t("i32 big", fn() = i32le(2147483648))
+t("i64", fn() = [i64le(-2i), i64le(-9223372036854775807i - 1i), i64le(-1)])
+t("read", fn() = [read_u64be(u64be(1234567890123i), 0), read_u64be(from_hex("00" + "0000000000000102"), 1)])
+t("read top", fn() = read_u64be(from_hex("8000000000000000"), 0))
+t("read off", fn() = read_u64be(bytes([1, 2]), 0))
+t("read neg", fn() = read_u64be(u64be(1), -1))
+t("read i", fn() = read_u64be(u64be(1), 0i))
+t("read s", fn() = read_u64be("x", 0))
+t("wrap32", fn() = [wrap32(0), wrap32(-1), wrap32(4294967296), wrap32(4294967297), wrap32(-4294967297), wrap32(9007199254740991)])
+t("wrap32 i", fn() = wrap32(1i))
+t("wrap32 big", fn() = wrap32(9007199254740992))
+t("rotl", fn() = [rotl(1, 0), rotl(1, 31), rotl(2147483648, 1), rotl(-1, 5), rotl(305419896, 8), rotr(1, 1), rotr(305419896, 8), rotr(5, 0)])
+t("rot64", fn() = [rotl(1i, 63), rotl(-9223372036854775807i - 1i, 1), rotr(1i, 1), rotr(1i, 0i), rotl(1i, 64 - 1), rotl(81985529216486895i, 8)])
+t("rot cnt", fn() = rotl(1, 32))
+t("rot cnt i", fn() = rotl(1, 1i))
+t("rot word", fn() = rotl(4294967296, 1))
+t("rot neg", fn() = rotl(-2147483649, 1))
+t("rot s", fn() = rotr("a", 1))
+t("rot64 cnt", fn() = rotl(1i, 64))`,
 };
 
 let pass = 0, fail = 0;

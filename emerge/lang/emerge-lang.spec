@@ -1,9 +1,9 @@
 spec:
   meta:
     name:     emerge-lang
-    version:  1.7.2
+    version:  1.8.0
     date:     2026-10-26
-    changelog: '1.7.2 — eg ide (local editor: autocomplete, live errors, run/test, Generate) and eg gen (from 1.6.0 winfix4) · 1.7.1 — Windows: cross-drive runtime require paths in bootstrap and eg build, forward slashes in diagnostic file names (from 1.6.0 winfix2) · 1.7.0 — CIE-EG §3 bytes, 0x/0b literals, & | ^ ~ << >> on 32-bit words, rotl/rotr, idiv, u8/u16le/u32le/u64le/i32le, sha256 (OS), read_bytes/write_bytes, strict utf8; §10.2 x64.eg, pe.eg, elf.eg; §10.3 milestone.eg · 1.6.0 — eg map (MAP.md, generated) and eg new (James: "how do i code with it, and where is the map or taxonomy?") · 1.5.0 — buildable: the core primitives and the standard library are Emerge source, rebuilt by eg bootstrap (James: "make it buildable") · 1.4.0 — kinds (schemas for primitives) and templates (spawned at run time), James: "a template or schema for dynamic primitives" · 1.3.0 — components: hooks, shapes, wires, boundary, send, eg components (James: "what about adding the component logic?")'
+    changelog: '1.8.0 — James: "Fix the primitives. Use all of my quotes from nexus to consolidate emerge functions." Strings are code points in both backends (CIE-EG §2: len, index, slice, split, find_text, order, matches); 22 builtins moved from JavaScript into core/prelude.eg and so native (ceil round abs sort clone trim replace hex from_hex u8…u64be read_u64be wrap32 rotl rotr), after "way to many primitives i feel like" and "i am completely removing js from emerge." (see the 2026-10-31 addendum) · 1.7.2 — eg ide (local editor: autocomplete, live errors, run/test, Generate) and eg gen (from 1.6.0 winfix4) · 1.7.1 — Windows: cross-drive runtime require paths in bootstrap and eg build, forward slashes in diagnostic file names (from 1.6.0 winfix2) · 1.7.0 — CIE-EG §3 bytes, 0x/0b literals, & | ^ ~ << >> on 32-bit words, rotl/rotr, idiv, u8/u16le/u32le/u64le/i32le, sha256 (OS), read_bytes/write_bytes, strict utf8; §10.2 x64.eg, pe.eg, elf.eg; §10.3 milestone.eg · 1.6.0 — eg map (MAP.md, generated) and eg new (James: "how do i code with it, and where is the map or taxonomy?") · 1.5.0 — buildable: the core primitives and the standard library are Emerge source, rebuilt by eg bootstrap (James: "make it buildable") · 1.4.0 — kinds (schemas for primitives) and templates (spawned at run time), James: "a template or schema for dynamic primitives" · 1.3.0 — components: hooks, shapes, wires, boundary, send, eg components (James: "what about adding the component logic?")'
     uuid:     nexus-emerge-lang-v1-0000-2026-1026-jamesbrooks-001
     supersedes_role_of: [emerge-kernel.js tokenizer/SNR-gate/parse, emerge-codegen-v2.js translateStmt heuristics]
     james:    '"can we finish this into a coding language"'
@@ -197,3 +197,29 @@ spec:
     - emerge/lang/test/lang.test.js        — lexer, parser, checker, every semantic rule above incl. components, both backends
     - emerge/lang/test/bootstrap.test.js   — on a copy: edit core/*.eg, eg bootstrap, the language changes in both backends; broken primitives, a broken prelude and a failing selftest never reach current; rollback; staleness; standalone
     - emerge/lang/test/differential.test.js — every program in emerge/lang/examples run by interpreter and by compiled JS: stdout, stderr, exit code and ledger hash identical
+
+# ## ADDENDUM 2026-10-31 — the primitives fixed; functions consolidated into Emerge (CIE-EG §2, §0)
+# James, 2026-10-31: "Fix the primitives. Use all of my quotes from nexus to consolidate emerge functions."
+# The quotes it stands on (Nexus, kept where they were said):
+#   2026-10-30, with ESS v0.1.0 (architecture-spec addendum (d), CHANGELOG-0.60.309): "way to many primitives i feel like"
+#   2026-10-28 (docs/2026-10-28-run-log-and-direction.md): "i am completely removing js from emerge." · "all js needs to eventually be
+#     replaced with .eg in emerge."
+#   2026-10-05 / 2026-10-07: "combining primitives or invariants to build higher leverage code for less tokens." · "focus on coding using
+#     overlapping primitives"
+#   1.5.0 (this spec's changelog): "make it buildable" — the standard library is Emerge source.
+# The coder's reading (TO CONFIRM): a function that can be written in Emerge from the others is library, not primitive. It is written once,
+# in core/prelude.eg, and both backends (the interpreter and the native compiler) run that one definition. A primitive stays only where
+# Emerge cannot say it: the OS (files, args, sha256 per P5 no_invented_crypto), the seeded RNG and the world (ledger, gaps, components),
+# the value model (len, str, int, num, type_of, repr, index), and variadic signatures (min, max, range, join, get, slice, sort_by,
+# print) until the language has optional parameters.
+#
+# 1. The primitives fixed (DECIDED in CIE-EG §2, cie-eg.spec s02: "Strings are sequences of Unicode code points. len(s) counts code points
+#    … UTF-16 appears nowhere."). The interpreter counted UTF-16 units in len, s[i], slice, split(s, ""), find_text and string < > while
+#    `for c in s` and the native compiler used code points: len("😀") was 2 interpreted and 1 native. All now count code points
+#    (lang/runtime.js cps / cpLen / cpCmp), and `matches` compiles its pattern with the u flag, so . is one code point.
+# 2. Moved from JavaScript (lang/runtime.js) into core/prelude.eg, and so native too: ceil round abs · sort clone · trim replace ·
+#    hex from_hex · u8 u16le u32le u64le i32le i64le u16be u32be u64be read_u64be · wrap32 rotl rotr.
+#    The nine fixed-width encoders are one function (_fixed) and nine one-line uses of it.
+# 3. Still primitive, and why: upper / lower (Unicode case tables; the text tables wait on D5), sort_by (an optional direction argument),
+#    parse_json / json (the native json.eg can follow), the `..` value and `matches` natively (a regex engine in Emerge is its own phase).
+# Proof: lang.test, differential, bootstrap, native (a case per moved function, interpreter == native) and selfhost (AT-11) all green.

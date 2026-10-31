@@ -9,6 +9,15 @@ fn _need_list(xs, who) {
 fn _need_fn(f, who) {
   if type_of(f) != "fn" { raise("{who} needs a fn, got {type_of(f)}") }
 }
+fn _need_num(x, who) {
+  if type_of(x) != "num" { raise("{who} needs a num, got {type_of(x)}") }
+}
+fn _need_str(s, who) {
+  if type_of(s) != "string" { raise("{who} needs a string, got {type_of(s)}") }
+}
+fn _need_bytes(b, who) {
+  if type_of(b) != "bytes" { raise("{who} needs bytes, got {type_of(b)}") }
+}
 
 // ── lists ────────────────────────────────────────────────────────────────────
 fn map(xs, f) {
@@ -162,3 +171,242 @@ fn group_by(xs, f) {
 
 fn take(xs, n) = slice(xs, 0, n)
 fn drop(xs, n) = slice(xs, n)
+
+// ── consolidated from JavaScript, 2026-10-31 (emerge-lang.spec addendum) ──────
+// James: "way to many primitives i feel like" · "i am completely removing js from emerge."
+// Each of these was a JavaScript builtin and is now library: written once here, run by the interpreter and the native compiler alike.
+
+// numbers
+fn ceil(x) {
+  _need_num(x, "ceil")
+  return -floor(-x)
+}
+
+fn round(x) {
+  _need_num(x, "round")
+  let r = floor(x)
+  if (x - r) * 2 >= 1 { return r + 1 }
+  return r
+}
+
+fn abs(x) {
+  if type_of(x) == "int" {
+    if x == -9223372036854775807i - 1i {
+      raise("int overflow in abs: result does not fit in 64 bits (use wrap_add / wrap_sub / wrap_mul to wrap)")
+    }
+    if x < 0i { return -x }
+    return x
+  }
+  _need_num(x, "abs")
+  if x < 0 { return -x }
+  return x
+}
+
+// lists: a stable merge sort over nums or strings (strings by code point)
+fn _merge_sort(xs) {
+  let n = len(xs)
+  if n < 2 { return slice(xs, 0) }
+  let a = _merge_sort(slice(xs, 0, idiv(n, 2)))
+  let b = _merge_sort(slice(xs, idiv(n, 2)))
+  var out = []
+  var i = 0
+  var j = 0
+  while i < len(a) and j < len(b) {
+    if b[j] < a[i] {
+      out[len(out)] = b[j]
+      j += 1
+    } else {
+      out[len(out)] = a[i]
+      i += 1
+    }
+  }
+  while i < len(a) {
+    out[len(out)] = a[i]
+    i += 1
+  }
+  while j < len(b) {
+    out[len(out)] = b[j]
+    j += 1
+  }
+  return out
+}
+
+fn sort(xs) {
+  _need_list(xs, "sort")
+  if len(xs) > 1 {
+    let t = type_of(xs[0])
+    for x in xs {
+      let u = type_of(x)
+      if (t != "num" and t != "string") or u != t {
+        raise("sort compares nums with nums or strings with strings, got {t} and {u}")
+      }
+    }
+  }
+  return _merge_sort(xs)
+}
+
+fn clone(v) {
+  let t = type_of(v)
+  if t == "list" {
+    var out = []
+    for x in v { out[len(out)] = clone(x) }
+    return out
+  }
+  if t == "map" {
+    var out = {}
+    for k, x in v { out[k] = clone(x) }
+    return out
+  }
+  return v
+}
+
+// text: trim strips what JavaScript's trim did — tab, LF, VT, FF, CR, space, LS, PS, BOM and the Unicode space separators
+fn _space(c) {
+  if c == " " or c == "\t" or c == "\n" or c == "\r" { return true }
+  let b = bytes(c)
+  if len(b) == 1 { return b[0] == 11 or b[0] == 12 }
+  var cp = -1
+  if len(b) == 2 { cp = ((b[0] & 31) << 6) | (b[1] & 63) }
+  if len(b) == 3 { cp = ((b[0] & 15) << 12) | ((b[1] & 63) << 6) | (b[2] & 63) }
+  return cp == 0xA0 or cp == 0x1680 or (cp >= 0x2000 and cp <= 0x200A) or cp == 0x2028 or cp == 0x2029 or cp == 0x202F or cp == 0x205F or cp == 0x3000 or cp == 0xFEFF
+}
+
+fn trim(s) {
+  _need_str(s, "trim")
+  let cs = split(s, "")
+  var a = 0
+  var b = len(cs)
+  while a < b and _space(cs[a]) { a += 1 }
+  while b > a and _space(cs[b - 1]) { b -= 1 }
+  return slice(s, a, b)
+}
+
+fn replace(s, a, b) {
+  _need_str(s, "replace")
+  _need_str(a, "replace")
+  _need_str(b, "replace")
+  return join(split(s, a), b)
+}
+
+// bytes
+fn hex(b) {
+  _need_bytes(b, "hex")
+  let digits = split("0123456789abcdef", "")
+  var out = []
+  for x in b {
+    out[len(out)] = digits[x >> 4]
+    out[len(out)] = digits[x & 15]
+  }
+  return join(out, "")
+}
+
+fn _hex_digit(c) {
+  let i = find_text("0123456789abcdef", c)
+  if i >= 0 { return i }
+  return find_text("0123456789ABCDEF", c)
+}
+
+fn from_hex(s) {
+  _need_str(s, "from_hex")
+  let cs = split(s, "")
+  if len(cs) % 2 != 0 { raise("from_hex needs pairs of hex digits") }
+  var out = []
+  var i = 0
+  while i < len(cs) {
+    let hi = _hex_digit(cs[i])
+    let lo = _hex_digit(cs[i + 1])
+    if hi < 0 or lo < 0 or len(cs[i]) != 1 or len(cs[i + 1]) != 1 { raise("from_hex needs pairs of hex digits") }
+    out[len(out)] = hi * 16 + lo
+    i += 2
+  }
+  return bytes(out)
+}
+
+// fixed-width integers to bytes: one function, nine widths. A num that is a safe integer, or an int, inside the width's range.
+fn _fixed(n, who, width, signed, big, range) {
+  var v = 0i
+  if type_of(n) == "int" {
+    v = n
+  } else if type_of(n) == "num" and floor(n) == n and n >= -9007199254740991 and n <= 9007199254740991 {
+    v = int(n)
+  } else {
+    raise("{who} needs an int in {range}, got {repr(n)}")
+  }
+  if width < 8 {
+    var lo = 0i
+    var hi = (1i << (width * 8)) - 1i
+    if signed {
+      lo = -(1i << (width * 8 - 1))
+      hi = (1i << (width * 8 - 1)) - 1i
+    }
+    if v < lo or v > hi { raise("{who} needs an int in {range}, got {repr(n)}") }
+  } else if not signed and v < 0i {
+    raise("{who} needs an int in {range}, got {repr(n)}")
+  }
+  var out = []
+  for k in 0..width { out[k] = 0 }
+  for k in 0..width {
+    var at = k
+    if big { at = width - 1 - k }
+    out[at] = num(shr_u(v, k * 8) & 0xFFi)
+  }
+  return bytes(out)
+}
+
+fn u8(n) = _fixed(n, "u8", 1, false, false, "0..255")
+fn u16le(n) = _fixed(n, "u16le", 2, false, false, "0..65535")
+fn u32le(n) = _fixed(n, "u32le", 4, false, false, "0..4294967295")
+fn u64le(n) = _fixed(n, "u64le", 8, false, false, "0..18446744073709551615")
+fn i32le(n) = _fixed(n, "i32le", 4, true, false, "-2147483648..2147483647")
+fn i64le(n) = _fixed(n, "i64le", 8, true, false, "-9223372036854775808..9223372036854775807")
+fn u16be(n) = _fixed(n, "u16be", 2, false, true, "0..65535")
+fn u32be(n) = _fixed(n, "u32be", 4, false, true, "0..4294967295")
+fn u64be(n) = _fixed(n, "u64be", 8, false, true, "0..18446744073709551615")
+
+// the inverse of u64be, for a value that fits in 63 bits (a larger one is an error, never a wrap)
+fn read_u64be(b, off) {
+  _need_bytes(b, "read_u64be")
+  _need_num(off, "read_u64be")
+  if floor(off) != off or off < 0 or off + 8 > len(b) {
+    raise("read_u64be: offset {repr(off)} needs 8 bytes inside {len(b)}")
+  }
+  if b[off] >= 128 {
+    raise("int overflow in read_u64be: result does not fit in 64 bits (use wrap_add / wrap_sub / wrap_mul to wrap)")
+  }
+  var v = 0i
+  for k in 0..8 { v = (v << 8) | int(b[off + k]) }
+  return v
+}
+
+// 32-bit words (nums) and 64-bit ints
+fn wrap32(x) {
+  if type_of(x) != "num" or floor(x) != x or x > 9007199254740991 or x < -9007199254740991 {
+    raise("wrap32 needs a safe int, got {repr(x)}")
+  }
+  return x % 4294967296
+}
+
+fn _rot(x, n, left, who) {
+  if type_of(x) == "int" {
+    var c = -1
+    if type_of(n) == "int" and n >= 0i and n <= 63i { c = num(n) }
+    if type_of(n) == "num" and floor(n) == n and n >= 0 and n <= 63 { c = n }
+    if c < 0 { raise("{who} on an int needs a shift count in 0..63, got {repr(n)}") }
+    var k = c
+    if not left { k = (64 - c) % 64 }
+    return (x << k) | shr_u(x, (64 - k) % 64)
+  }
+  if type_of(x) != "num" or floor(x) != x or x < -2147483648 or x > 4294967295 {
+    raise("{who} works on 32-bit words: an int in [-2^31, 2^32), got {repr(x)}")
+  }
+  if type_of(n) != "num" or floor(n) != n or n < 0 or n > 31 {
+    raise("{who} needs a shift count in 0..31, got {repr(n)}")
+  }
+  let w = int(x % 4294967296)
+  var k = n
+  if not left { k = (32 - n) % 32 }
+  return num(((w << k) | shr_u(w, (32 - k) % 32)) & 0xFFFFFFFFi)
+}
+
+fn rotl(x, n) = _rot(x, n, true, "rotl")
+fn rotr(x, n) = _rot(x, n, false, "rotr")

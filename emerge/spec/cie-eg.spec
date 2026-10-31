@@ -1220,6 +1220,12 @@ spec:
         - "Every case in native.test.js and differential.test.js gives the interpreter's output."
       error_paths:
         - "anything still outside the subset → refused by name"
+      # ADDENDUM 2026-10-31 (emerge 1.8.0). James: "Fix the primitives. Use all of my quotes from nexus to consolidate emerge functions."
+      # GATE-NL-003 widened: 22 builtins moved from lang/runtime.js into core/prelude.eg (ceil round abs sort clone trim replace hex
+      # from_hex u8 u16le u32le u64le i32le i64le u16be u32be u64be read_u64be wrap32 rotl rotr), so every native program has them,
+      # proven case by case in native.test.js ("moved to the prelude"). s02 enforced in the interpreter too: strings are code points.
+      # Still outside native: fractional nums (GATE-NL-004), upper / lower (case tables, with D5), sort_by and the other variadic
+      # builtins (no optional parameters yet), json / parse_json, the `..` value, matches. Full record: lang/emerge-lang.spec addendum.
 
     - id:    MOD-NATIVE-SYSTEM
       name:  native_system

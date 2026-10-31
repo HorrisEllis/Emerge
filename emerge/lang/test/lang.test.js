@@ -530,6 +530,7 @@ t('the int type annotation is exact', () => {
   fails('let y: num = 1i', '"y" must be num, got int 1');
   assert.strictEqual(out('fn f(a: int): int = a + 1i\nprint(f(41i))'), '42\n');
 });
+t('strings are code points (CIE-EG §2): len, index, slice, split, find_text, order', () => assert.strictEqual(out('let s = "a😀é"\nprint(len(s), s[1], slice(s, 1, 2), len(split(s, "")), find_text(s, "é"), "😀" > utf8(bytes([0xEE, 0x80, 0x80])), sort(["😀", utf8(bytes([0xEE, 0x80, 0x80]))]) == [utf8(bytes([0xEE, 0x80, 0x80])), "😀"], "😀" matches "^.$")'), '3 😀 😀 3 2 true true true\n'));
 t('ints are data: json and the ledger record them exactly', () => assert.strictEqual(out('print(json({n: 9223372036854775807i}))'), '{"n":9223372036854775807}\n'));
 t('ranges, min, max, abs work on ints', () => assert.strictEqual(out('print(0i..3i, min(3i, 1i), max([3i, 9i, 2i]), abs(-4i))'), '[0, 1, 2] 1 9 4\n'));
 t('u64be / i64le / read_u64be take and return ints', () => assert.strictEqual(out('print(hex(u64be(258i)), hex(u64le(258)), hex(i64le(-2i)), read_u64be(u64be(1234567890123i), 0))'), '0000000000000102 0201000000000000 feffffffffffffff 1234567890123\n'));

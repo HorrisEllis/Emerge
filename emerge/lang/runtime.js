@@ -51,6 +51,22 @@ function typeOf(v) {
   return 'unknown';
 }
 
+// CIE-EG §2: a string is a sequence of Unicode code points; UTF-16 appears nowhere. JavaScript strings are UTF-16, so
+// every count, index, slice, split and comparison on text goes through these (the fast path when there is no surrogate).
+const astral = s => /[\uD800-\uDFFF]/.test(s);
+const cps = s => (astral(s) ? Array.from(s) : s.split(''));
+const cpLen = s => (astral(s) ? Array.from(s).length : s.length);
+function cpCmp(a, b) {
+  if (!astral(a) && !astral(b)) return a < b ? -1 : a > b ? 1 : 0;
+  for (let i = 0, j = 0; ; ) {
+    if (i >= a.length || j >= b.length) return (i < a.length ? 1 : 0) - (j < b.length ? 1 : 0);
+    const x = a.codePointAt(i), y = b.codePointAt(j);
+    if (x !== y) return x < y ? -1 : 1;
+    i += x > 0xFFFF ? 2 : 1;
+    j += y > 0xFFFF ? 2 : 1;
+  }
+}
+
 function clone(v) {
   if (Array.isArray(v)) return v.map(clone);
   if (isMap(v)) { const m = mkMap(); for (const k of Object.keys(v)) m[k] = clone(v[k]); return m; }
@@ -305,6 +321,7 @@ function createRuntime(opts = {}) {
     const okNum = (typeof a === 'number' && typeof b === 'number') || (isI(a) && isI(b));
     const okStr = typeof a === 'string' && typeof b === 'string';
     if (!okNum && !okStr) err(`${op} compares two nums or two strings, got ${typeOf(a)} and ${typeOf(b)}`);
+    if (okStr) { const c = cpCmp(a, b); a = c; b = 0; }
     switch (op) { case '<': return a < b; case '<=': return a <= b; case '>': return a > b; case '>=': return a >= b; }
   };
   rt.range = (a, b) => {
@@ -326,7 +343,7 @@ function createRuntime(opts = {}) {
   rt.matches = (a, b) => {
     if (typeof a !== 'string' || typeof b !== 'string') err('matches needs a string and a pattern string');
     let re;
-    try { re = new RegExp(b); } catch (e) { err(`bad pattern ${JSON.stringify(b)}: ${e.message}`); }
+    try { re = new RegExp(b, 'u'); } catch (e) { err(`bad pattern ${JSON.stringify(b)}: ${e.message}`); }
     return re.test(a);
   };
   rt.coalesce = (a, rhs) => (a === null || a === undefined ? rhs() : a);
@@ -364,9 +381,10 @@ function createRuntime(opts = {}) {
     }
     if (typeof o === 'string') {
       if (!Number.isInteger(i)) err(`string index must be an int, got ${typeOf(i)}`);
-      const j = i < 0 ? o.length + i : i;
-      if (j < 0 || j >= o.length) err(`index ${i} is out of range for a string of ${o.length}`);
-      return o[j];
+      const c = cps(o);
+      const j = i < 0 ? c.length + i : i;
+      if (j < 0 || j >= c.length) err(`index ${i} is out of range for a string of ${c.length}`);
+      return c[j];
     }
     if (isMap(o)) {
       if (typeof i !== 'string') err(`map key must be a string, got ${typeOf(i)}`);
@@ -987,7 +1005,7 @@ function createRuntime(opts = {}) {
   const needMap = (v, who) => { if (!isMap(v)) err(`${who} needs a map, got ${typeOf(v)}`); return v; };
   const cmpSort = (a, b, who) => {
     if (typeof a === 'number' && typeof b === 'number') return a - b;
-    if (typeof a === 'string' && typeof b === 'string') return a < b ? -1 : a > b ? 1 : 0;
+    if (typeof a === 'string' && typeof b === 'string') return cpCmp(a, b);
     err(`${who} compares nums with nums or strings with strings, got ${typeOf(a)} and ${typeOf(b)}`);
   };
 
@@ -1014,9 +1032,6 @@ function createRuntime(opts = {}) {
     return fit(BigInt(Math.trunc(v)), 'int()');
   });
   def('floor', 1, v => Math.floor(needNum(v, 'floor')));
-  def('ceil', 1, v => Math.ceil(needNum(v, 'ceil')));
-  def('round', 1, v => Math.round(needNum(v, 'round')));
-  def('abs', 1, v => (isI(v) ? fit(v < 0n ? -v : v, 'abs') : Math.abs(needNum(v, 'abs'))));
   def('sqrt', 1, v => { if (needNum(v, 'sqrt') < 0) err('sqrt of a negative num'); return Math.sqrt(v); });
   const minmax = (who, pick) => (...xs) => {
     const ys = xs.length === 1 && Array.isArray(xs[0]) ? xs[0] : xs;
@@ -1029,7 +1044,8 @@ function createRuntime(opts = {}) {
   def('max', [1, -1], minmax('max', Math.max));
   def('len', 1, v => {
     if (v instanceof EBytes) return v.b.length;
-    if (typeof v === 'string' || Array.isArray(v)) return v.length;
+    if (typeof v === 'string') return cpLen(v);
+    if (Array.isArray(v)) return v.length;
     if (isMap(v)) return Object.keys(v).length;
     err(`len needs a string, list or map, got ${typeOf(v)}`);
   });
@@ -1040,7 +1056,6 @@ function createRuntime(opts = {}) {
     needMap(m, 'get'); needStr(k, 'get');
     return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : d;
   });
-  def('clone', 1, v => clone(v));
   def('slice', [2, 3], (v, a, b) => {
     if (v instanceof EBytes) {
       if (!Number.isInteger(a) || (b !== undefined && b !== null && !Number.isInteger(b))) err('slice needs int bounds');
@@ -1048,9 +1063,9 @@ function createRuntime(opts = {}) {
     }
     if (typeof v !== 'string' && !Array.isArray(v)) err(`slice needs a string or list, got ${typeOf(v)}`);
     if (!Number.isInteger(a) || (b !== undefined && b !== null && !Number.isInteger(b))) err('slice needs int bounds');
-    return v.slice(a, b === undefined || b === null ? undefined : b);
+    const end = b === undefined || b === null ? undefined : b;
+    return typeof v === 'string' && astral(v) ? Array.from(v).slice(a, end).join('') : v.slice(a, end);
   });
-  def('sort', 1, xs => needList(xs, 'sort').slice().sort((a, b) => cmpSort(a, b, 'sort')));
   def('sort_by', [2, 3], (xs, f, dir = 'asc') => {
     needList(xs, 'sort_by'); needFn(f, 'sort_by');
     if (dir !== 'asc' && dir !== 'desc') err('sort_by direction is "asc" or "desc"');
@@ -1069,11 +1084,9 @@ function createRuntime(opts = {}) {
     return r;
   });
   def('join', [1, 2], (xs, sep = '') => needList(xs, 'join').map(x => show(x)).join(needStr(sep, 'join')));
-  def('split', 2, (s, sep) => needStr(s, 'split').split(needStr(sep, 'split')));
+  def('split', 2, (s, sep) => (needStr(sep, 'split') === '' ? cps(needStr(s, 'split')) : needStr(s, 'split').split(sep)));
   def('upper', 1, s => needStr(s, 'upper').toUpperCase());
   def('lower', 1, s => needStr(s, 'lower').toLowerCase());
-  def('trim', 1, s => needStr(s, 'trim').trim());
-  def('replace', 3, (s, a, b) => needStr(s, 'replace').split(needStr(a, 'replace')).join(needStr(b, 'replace')));
   def('type_of', 1, v => typeOf(v));
   def('json', 1, v => stringifyBig(toData(v, 'json')));
   def('parse_json', 1, s => {
@@ -1184,11 +1197,6 @@ function createRuntime(opts = {}) {
     return new EBytes(Buffer.from(acc));
   });
   def('byte_len', 1, v => (typeof v === 'string' ? Buffer.byteLength(v, 'utf8') : needBytes(v, 'byte_len').length));
-  def('hex', 1, b => Buffer.from(needBytes(b, 'hex')).toString('hex'));
-  def('from_hex', 1, s => {
-    if (!/^(?:[0-9a-fA-F]{2})*$/.test(needStr(s, 'from_hex'))) err('from_hex needs pairs of hex digits');
-    return new EBytes(Buffer.from(s, 'hex'));
-  });
   def('utf8', 1, b => {
     const u = needBytes(b, 'utf8');
     try { return new TextDecoder('utf-8', { fatal: true }).decode(u); }
@@ -1204,36 +1212,7 @@ function createRuntime(opts = {}) {
       err('invalid UTF-8');
     }
   });
-  // u8 u16le u32le u64le i32le i64le · u16be u32be u64be — fixed-width integers to bytes. A num or an int in range; anything else is an error.
-  const fixed = (who, width, signed, big) => (n) => {
-    const bits = BigInt(width * 8);
-    const min = signed ? -(2n ** (bits - 1n)) : 0n;
-    const max = signed ? 2n ** (bits - 1n) - 1n : 2n ** bits - 1n;
-    let v;
-    if (isI(n)) v = n;
-    else if (Number.isSafeInteger(n)) v = BigInt(n);
-    else err(`${who} needs an int in ${min}..${max}, got ${show(n, true)}`);
-    if (v < min || v > max) err(`${who} needs an int in ${min}..${max}, got ${show(n, true)}`);
-    let u = BigInt.asUintN(width * 8, v);
-    const out = Buffer.alloc(width);
-    for (let k = 0; k < width; k++) { out[big ? width - 1 - k : k] = Number(u & 0xFFn); u >>= 8n; }
-    return new EBytes(out);
-  };
-  def('u8', 1, fixed('u8', 1, false, false));
-  def('u16le', 1, fixed('u16le', 2, false, false));
-  def('u32le', 1, fixed('u32le', 4, false, false));
-  def('u64le', 1, fixed('u64le', 8, false, false));
-  def('i32le', 1, fixed('i32le', 4, true, false));
-  def('i64le', 1, fixed('i64le', 8, true, false));
-  def('u16be', 1, fixed('u16be', 2, false, true));
-  def('u32be', 1, fixed('u32be', 4, false, true));
-  def('u64be', 1, fixed('u64be', 8, false, true));
-  // read_u64be(bytes, offset) → int: the inverse of u64be, for a value that fits in 63 bits (a larger one is an error, never a wrap)
-  def('read_u64be', 2, (b, off) => {
-    const u = needBytes(b, 'read_u64be'); needNum(off, 'read_u64be');
-    if (!Number.isInteger(off) || off < 0 || off + 8 > u.length) err(`read_u64be: offset ${show(off, true)} needs 8 bytes inside ${u.length}`);
-    return fit(Buffer.from(u.subarray(off, off + 8)).readBigUInt64BE(), 'read_u64be');
-  });
+  // ceil round abs sort clone trim replace hex from_hex u8…u64be read_u64be wrap32 rotl rotr: written in Emerge, core/prelude.eg (2026-10-31)
   def('sha256', 1, v => new EBytes(crypto.createHash('sha256').update(typeof v === 'string' ? Buffer.from(v, 'utf8') : needBytes(v, 'sha256')).digest()));
   def('read_bytes', 1, p => {
     try { return new EBytes(fs.readFileSync(needStr(p, 'read_bytes'))); } catch (e) { err(`read_bytes: ${e.code || e.message} ${p}`); }
@@ -1251,13 +1230,6 @@ function createRuntime(opts = {}) {
     try { fs.chmodSync(needStr(p, 'chmod_exec'), 0o755); } catch (e) { err(`chmod_exec: ${e.code || e.message} ${p}`); }
     return null;
   });
-  const rot64 = (x, n, left, who) => {
-    const c = count64(n, who); const u = BigInt.asUintN(64, x); const k = left ? c : (64n - c) % 64n;
-    return wrap64((u << k) | (u >> ((64n - k) % 64n)));
-  };
-  def('rotl', 2, (x, n) => { if (isI(x)) return rot64(x, n, true, 'rotl'); const w = word(x, 'rotl'); const c = count(n, 'rotl'); return ((w << c) | (w >>> ((32 - c) % 32))) >>> 0; });
-  def('rotr', 2, (x, n) => { if (isI(x)) return rot64(x, n, false, 'rotr'); const w = word(x, 'rotr'); const c = count(n, 'rotr'); return ((w >>> c) | (w << ((32 - c) % 32))) >>> 0; });
-  def('wrap32', 1, x => { if (!Number.isInteger(x) || !Number.isSafeInteger(x)) err(`wrap32 needs a safe int, got ${show(x, true)}`); return ((x % 4294967296) + 4294967296) % 4294967296; });
   def('shr_u', 2, (x, n) => { if (!isI(x)) err(`shr_u needs an int, got ${typeOf(x)}`); return wrap64(BigInt.asUintN(64, x) >> count64(n, 'shr_u')); });
   const wrapOp = (who, f) => def(who, 2, (a, b) => { if (!isI(a) || !isI(b)) err(`${who} needs two ints, got ${typeOf(a)} and ${typeOf(b)}`); return wrap64(f(a, b)); });
   wrapOp('wrap_add', (a, b) => a + b); wrapOp('wrap_sub', (a, b) => a - b); wrapOp('wrap_mul', (a, b) => a * b);
@@ -1273,7 +1245,7 @@ function createRuntime(opts = {}) {
     return Math.floor(a / b);
   });
   def('truthy', 2, (v, who) => rt.truth(v, needStr(who, 'truthy')));
-  def('find_text', 2, (s, x) => needStr(s, 'find_text').indexOf(needStr(x, 'find_text')));
+  def('find_text', 2, (s, x) => { const i = needStr(s, 'find_text').indexOf(needStr(x, 'find_text')); return i < 0 ? i : cpLen(s.slice(0, i)); });
   def('repr', 1, v => show(v, true));
   rt.b = B;
 

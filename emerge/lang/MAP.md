@@ -1,6 +1,6 @@
 # Emerge — the map
 
-Generated from the language itself (emerge 1.7.2) by `eg map`, and again by every `eg bootstrap`. Do not edit it:
+Generated from the language itself (emerge 1.8.0) by `eg map`, and again by every `eg bootstrap`. Do not edit it:
 change the source and run `node lang/eg.js map --out lang/MAP.md` (a test fails when this file is out of date).
 
 ## The layers
@@ -152,11 +152,11 @@ Annotations (`: type`, `?` for nullable) on let/var, params, returns and hook sh
 
 Native (JavaScript) — name/arity:
 
-`print/0+` · `str/1` · `num/1` · `int/1` · `floor/1` · `ceil/1` · `round/1` · `abs/1` · `sqrt/1` · `min/1+` · `max/1+` · `len/1` · `keys/1` · `values/1` · `has/2` · `get/2–3` · `clone/1` · `slice/2–3` · `sort/1` · `sort_by/2–3` · `range/1–3` · `join/1–2` · `split/2` · `upper/1` · `lower/1` · `trim/1` · `replace/3` · `type_of/1` · `json/1` · `parse_json/1` · `random/0` · `uid/0–1` · `gaps/0` · `ledger/0` · `ledger_verify/0–1` · `ledger_proof/1` · `ledger_check_proof/1` · `observe/0` · `ledger_why/1` · `observe_gaps/0` · `spent/0` · `components/0` · `is_kind/2` · `instances/1` · `args/0` · `raise/1` · `read_file/1` · `write_file/2` · `bytes/1` · `byte_len/1` · `hex/1` · `from_hex/1` · `utf8/1` · `u8/1` · `u16le/1` · `u32le/1` · `u64le/1` · `i32le/1` · `i64le/1` · `u16be/1` · `u32be/1` · `u64be/1` · `read_u64be/2` · `sha256/1` · `read_bytes/1` · `write_bytes/2` · `chmod_exec/1` · `rotl/2` · `rotr/2` · `wrap32/1` · `shr_u/2` · `wrap_add/2` · `wrap_sub/2` · `wrap_mul/2` · `idiv/2` · `truthy/2` · `find_text/2` · `repr/1`
+`print/0+` · `str/1` · `num/1` · `int/1` · `floor/1` · `sqrt/1` · `min/1+` · `max/1+` · `len/1` · `keys/1` · `values/1` · `has/2` · `get/2–3` · `slice/2–3` · `sort_by/2–3` · `range/1–3` · `join/1–2` · `split/2` · `upper/1` · `lower/1` · `type_of/1` · `json/1` · `parse_json/1` · `random/0` · `uid/0–1` · `gaps/0` · `ledger/0` · `ledger_verify/0–1` · `ledger_proof/1` · `ledger_check_proof/1` · `observe/0` · `ledger_why/1` · `observe_gaps/0` · `spent/0` · `components/0` · `is_kind/2` · `instances/1` · `args/0` · `raise/1` · `read_file/1` · `write_file/2` · `bytes/1` · `byte_len/1` · `utf8/1` · `sha256/1` · `read_bytes/1` · `write_bytes/2` · `chmod_exec/1` · `shr_u/2` · `wrap_add/2` · `wrap_sub/2` · `wrap_mul/2` · `idiv/2` · `truthy/2` · `find_text/2` · `repr/1`
 
 Prelude (Emerge, `lang/core/prelude.eg`) — name/arity:
 
-`map/2` · `filter/2` · `reduce/3` · `find/2` · `any/2` · `all/2` · `count/2` · `push/2` · `reverse/1` · `sum/1` · `index_of/2` · `without/2` · `flatten/1` · `zip/2` · `unique/1` · `group_by/2` · `take/2` · `drop/2`
+`map/2` · `filter/2` · `reduce/3` · `find/2` · `any/2` · `all/2` · `count/2` · `push/2` · `reverse/1` · `sum/1` · `index_of/2` · `without/2` · `flatten/1` · `zip/2` · `unique/1` · `group_by/2` · `take/2` · `drop/2` · `ceil/1` · `round/1` · `abs/1` · `sort/1` · `clone/1` · `trim/1` · `replace/3` · `hex/1` · `from_hex/1` · `u8/1` · `u16le/1` · `u32le/1` · `u64le/1` · `i32le/1` · `i64le/1` · `u16be/1` · `u32be/1` · `u64be/1` · `read_u64be/2` · `wrap32/1` · `rotl/2` · `rotr/2`
 
 ## Ledger entry kinds
 
