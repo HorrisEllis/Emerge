@@ -23,6 +23,14 @@ For the next session. Read this, then `emerge/spec/cie-eg.spec` section 0 (his p
 | Chunk benchmark | `bench/chunks.js`, `bench/chunks/utf8_decode/` | his run: 7B solves one-rule units, breaks on multi-rule ones |
 | His credit and record | `HorrisEllis/Nexus`: `docs/JAMES-BROOKS.md`, `docs/his-words/`, `docs/PROOF-OF-COMPETENCY.md` | proof entries for 2026-10-31 on branch `claude/determined-meitner-93l5ue` (not yet in Nexus `main`) |
 
+## Landed in parallel (another session, same branch, pushed while this one ran)
+
+- `1cb2d7d` **synth.eg: code generation with no model — utf8_decode 6/6, deterministic.** The task the 7B model failed (0/3)
+  is solved with no model at all. Read it before building the split-on-struggle step or the Guardian lifeline: those may now
+  be the fallback behind synth, not the plan.
+- spec 16 (the loop, one atom at every zoom; LP-05..LP-08), bench with Python beside Emerge and JavaScript and real
+  tokenizers (eg 356 / js 436 / py 355 tokens), and a finding: native for-over-string is quadratic.
+
 ## Next, in his order of value
 
 1. **The Nexus bridge** (recommended first). One small, real Nexus piece (a system's door or a gate) written with `eg say`,
