@@ -8,3 +8,4 @@ emerge/output/*
 emerge/lang/build/previous/
 bench/speed/out/
 bench/speed/work-native
+__pycache__/
