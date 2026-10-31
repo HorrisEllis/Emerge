@@ -162,7 +162,7 @@ test('compile(cie-eg.spec): parsedSpec returned, buckets as planned, .eg only', 
   const names = b => r.executionPlan[b].map(x => x.name).sort().join(',');
   eq(names('skip'), 'ledger,native,observe');
   eq(names('defer'), 'contract,identity,seal,store,synth');
-  eq(names('run'), 'boot,gate,ledger_file,native_lang,native_system,native_tools,native_windows,registry,text');
+  eq(names('run'), 'boot,gate,ledger_file,native_lang,native_system,native_tools,native_windows,registry,replay,text');
   eq(names('block'), '');
   assert(r.executionPlan.run.every(x => x.tier === 'T2'), 'every runnable module reaches T2');
   const files = walk(out);

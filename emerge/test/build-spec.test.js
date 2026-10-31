@@ -63,7 +63,7 @@ function repoCopy() {
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'build-spec-root-'));
   const r1 = await run([SPEC, '--dry-run', '--out', empty]);
   check('dry run exits 0', r1.code === 0, r1.out.slice(-300));
-  check('plan printed', /plan: 9 to build, 5 deferred, 3 done or skipped, 0 blocked/.test(r1.out), r1.out.slice(0, 400));
+  check('plan printed', /plan: 10 to build, 5 deferred, 3 done or skipped, 0 blocked/.test(r1.out), r1.out.slice(0, 400));
   check('open decisions listed with waiting modules', /D3 .*waiting: seal/.test(r1.out) && /D7 .*waiting: contract/.test(r1.out));
   check('dry run writes nothing to the build root', fs.readdirSync(empty).length === 0);
 
@@ -76,11 +76,11 @@ function repoCopy() {
   const rec = path.join(repo, '.emerge', 'build', 'cie-eg.json');
   check('build record written', fs.existsSync(rec));
   const record = JSON.parse(fs.readFileSync(rec, 'utf8'));
-  // 5 cie modules × (.eg + .test.eg), plus a new .test.eg beside each of the 4 hand-written native files (codegen, rt,
+  // 6 cie modules × (.eg + .test.eg), plus a new .test.eg beside each of the 4 hand-written native files (codegen, rt,
   // emerge, pe) — the hand-written files themselves are never among them
-  check('record lists files with hashes', record.files.length === 14 && record.files.every(x => /^[0-9a-f]{64}$/.test(x.sha256)) &&
+  check('record lists files with hashes', record.files.length === 16 && record.files.every(x => /^[0-9a-f]{64}$/.test(x.sha256)) &&
     !record.files.some(x => x.path.endsWith('native/codegen.eg')), record.files.map(x => x.path).join(','));
-  check('record has the plan', record.plan.counts.run === 9 && record.plan.defer.some(d => d.name === 'seal'));
+  check('record has the plan', record.plan.counts.run === 10 && record.plan.defer.some(d => d.name === 'seal'));
   const first = fs.readFileSync(rec);
   await run([SPEC, '--out', repo]);
   check('record is deterministic (no clock)', Buffer.compare(first, fs.readFileSync(rec)) === 0);
@@ -89,7 +89,7 @@ function repoCopy() {
   // 3. --build (Ollama API)
   const r3 = await run([SPEC, '--out', repo, '--build', '--url', model.url, '--model', 'fake']);
   check('build exits 0', r3.code === 0, r3.out.slice(-400));
-  check('T2 counts 8 written, 1 failed', /T2: 8 written, 1 failed/.test(r3.out), (r3.out.match(/T2:.*$/m) || [''])[0]);
+  check('T2 counts 9 written, 1 failed', /T2: 9 written, 1 failed/.test(r3.out), (r3.out.match(/T2:.*$/m) || [''])[0]);
   const cie = path.join(repo, 'emerge', 'lang', 'cie');
   check('valid answer replaced its scaffold', fs.readFileSync(path.join(cie, 'boot.eg'), 'utf8').startsWith('fn boot_ready'));
   check('broken answer rejected beside the scaffold', fs.readFileSync(path.join(cie, 'gate.eg'), 'utf8').startsWith('// GENERATED') &&
@@ -102,10 +102,10 @@ function repoCopy() {
   // 4. OpenAI-compatible API
   const repo2 = repoCopy();
   const r4 = await run([SPEC, '--out', repo2, '--build', '--api', 'openai', '--url', model.url, '--model', 'fake']);
-  check('openai API works too', r4.code === 0 && /T2: 8 written, 1 failed/.test(r4.out), r4.out.slice(-300));
+  check('openai API works too', r4.code === 0 && /T2: 9 written, 1 failed/.test(r4.out), r4.out.slice(-300));
 
   // 5. only the model server was contacted
-  check('only the model server was called', model.seen.length === 18 && model.seen.every(u => u === '/api/chat' || u === '/v1/chat/completions'), model.seen.join(','));
+  check('only the model server was called', model.seen.length === 20 && model.seen.every(u => u === '/api/chat' || u === '/v1/chat/completions'), model.seen.join(','));
 
   model.close();
   console.log('\n\n  build-spec.test.js');

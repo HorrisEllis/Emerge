@@ -823,6 +823,80 @@ spec:
         - { id: CH-Q4, question: "Where do known-answer vectors come from for each chunk (DF-06), and who signs off that a source is independent?" }
         - { id: CH-Q5, question: "Is the synthesizer written in .eg from the start (so emerge.exe runs it, section 0), or prototyped in the spec compiler first?" }
 
+    s16_the_loop:
+      number: "16"
+      title: The loop — one atom at every zoom
+      status: PROPOSED
+      new_in: cie-eg.spec (2026-10-31; not in the .md yet)
+      his_words:
+        - "James, 2026-10-31: \"what about specs being blueprints?\""
+        - "James, 2026-10-31: \"Replable code generation, without ai.\""
+        - "James, 2026-10-31: \"Replay engine. A gate inbetween each function? That defines boundaries.\""
+        - "James, 2026-10-31: \"Zoom out. I'm a systems thinker. Non linear.\""
+        - "James, 2026-10-31: \"Yes, and agnostic. Learns from each failed test. This is basically becoming a llm\""
+      reading: >
+        The coder's reading of those words, to confirm. Sections 4, 6, 13 and 15 are one loop, and the loop has one atom.
+      atom:
+        name: crossing
+        text: >
+          gate + boundary + record. Every boundary (system, component, UI layer, macro step, function, chunk) is a gate.
+          The gate's declaration IS the boundary (input shape, output shape, 1 to 5 invariants). Every crossing is
+          checked; a failed check is a gap at that exact edge; every crossing is recorded naming the crossing that caused
+          it. Replay, rewind, fork, clips, failure reports, macros, test vectors and the UI timeline are views of the
+          recorded crossings, not separate systems.
+        zoom: "his increments of zoom (2026-10-02): system → component → function → expression; the same atom at each."
+      loop:
+        - "SPEC = BLUEPRINT. The spec is intent and the only thing called a blueprint. Nothing observed rewrites it."
+        - "SYNTHESIZE (15): derive → template → gap. No model inside the loop."
+        - "COMPILE: .eg → exe (10)."
+        - "RUN: every boundary a gate (6, extended to functions)."
+        - "TIMELINE: crossings into the ring; failures and checkpoint digests into the ledger (4)."
+        - "VIEWS: replay, clips, macros, the UI timeline."
+        - "OBSERVE (13): repeats and drift become gaps and proposals."
+        - "LEARN: back into the vocabulary and templates (eg say / teach), never into the spec's intent."
+      agnostic:
+        text: >
+          The gate does not care what is behind it: an .eg fn, a JS function, a shell command, a model call, a macro step,
+          a person. Anything behind a gate is replayable once its result is recorded. A model is one impure function
+          behind a gate: recorded, replayable with the model stopped (as Nexus's ollama tape already does), and each
+          accepted answer becomes a template or a word, so the next run needs no model.
+      learning:
+        text: >
+          Learns from each failed test. A failed crossing is a gap carrying caller, callee, inputs and the recorded
+          neighbourhood (a clip). The fix is learned as a named, dated, inspectable entry: a case, a template, or a word,
+          each holding the failing crossing as its proof. The system learns HOW (vocabulary, templates, cases); only he
+          changes WHAT (the spec).
+        rules:
+          - id: LP-01
+            text: "A learned entry is accepted only if every recorded crossing still replays with the same output (no regression). Otherwise it is a proposal."
+          - id: LP-02
+            text: "A learned entry is never anonymous: it names the failure it came from, its date, and its proof crossings."
+          - id: LP-03
+            text: "Nothing is guessed. What no word, template or case covers is a gap, closed once."
+          - id: LP-04
+            text: "Model use is measured: the count of gaps closed by a model per run. The loop's direction is that count falling to zero."
+        versus_a_model: >
+          Like a language model: it learns from examples (crossings), turns a description into code, and improves with
+          failures. Unlike one: every learned thing is a named entry with its source, not a weight; the same input gives
+          the same bytes; it can say why; and it does not generalise past what it was taught — it names the gap instead.
+          It trades generalisation for proof.
+      levels:
+        text: "per gate, his StreamLog levels: OFF (check only) · EVENTS (which crossed) · DEEP (+ shapes) · DATA (+ values; replay needs this)."
+      defaults_to_override:
+        - "every fn gets a gate, not only exports (his: \"a gate inbetween each function\")"
+        - "default level DATA in eg test and eg replay, EVENTS in eg run"
+        - "ring = the replay window; ledger = failures, ingress results and a digest of the ring at each checkpoint (answers the RFR2 ring vs ledger question)"
+        - "a list or map crossing a gate may not be mutated by the callee (checker refuses), so CH-04 holds"
+        - "impure builtins (read_file, read_bytes, args, time, a model) are ingress gates: their result is recorded and replay feeds it back"
+      sources_merged:
+        - "Nexus intelligence/rfr2: kernel, causality, clip, compress, context, query, enforcement, version-gate (to port to .eg; field/relational.js excluded: his consent boundary)"
+        - "Nexus clear-glass .macro: gated steps, already his node envelope"
+        - "Nexus ollama/lib/tape.js: model calls as recorded frames"
+        - "Nexus lib/blueprint.js: divergence from the blueprint opens a gap"
+      first_milestone:
+        text: "record bench/chunks/utf8_decode at DATA, replay it byte for byte, then replay seq_len alone from its recorded crossings."
+        exit_test: "replay output identical to the recorded run; a deliberately broken seq_len is caught at its gate as a gap naming the crossing."
+
     s12_open_decisions:
       number: "12"
       title: Open decisions, in priority order
@@ -836,6 +910,7 @@ spec:
         - { id: D7, priority: 7, question: "Contract syntax: new contract block as proposed, or reuse wire only?", ref: "6.1", status: OPEN }
         - { id: D8, priority: 8, question: "Data types and stores (14): adopt, and answer DT-Q1..Q5?",  ref: "14",   status: OPEN, note: "new in cie-eg.spec" }
         - { id: D9, priority: 9, question: "Chunks as layers (15): adopt, and answer CH-Q1..Q3?",       ref: "15",   status: OPEN, note: "new in cie-eg.spec; bench/chunks.js measures it" }
+        - { id: D10, priority: 10, question: "The loop (16): adopt, and keep or override its defaults_to_override?", ref: "16", status: OPEN, note: "new 2026-10-31; MOD-REPLAY builds on it" }
 
   # ══════════════════════════════════════════════════════════════════════════
   # COMPILER VIEW — modules, events, schemas, enforcement, derived from the sections above
@@ -1412,6 +1487,43 @@ spec:
         - "cases without an else → refused at derive (not derivable)"
         - "template hole fails its tests after retries → the unit moves to rung 3, recorded"
         - "rung 3 fails after retries → a gap (structural) naming the chunk and its boundary hash"
+
+    - id:    MOD-REPLAY
+      name:  replay
+      uuid:  cie-eg-replay-v0-3-1-0001
+      build:
+        state: not_built
+        file: emerge/lang/cie/replay.eg
+        blocked_by: []
+        next: "fn boundary syntax in the parser and checker; a gate around every fn call in lang/runtime.js (interpreter and compiled JS byte-identical); a cross ledger kind; eg replay <run> [--fn name]; first milestone of section 16."
+      spec_ref: s16_the_loop
+      status: PROPOSED
+      description: >
+        The gate between functions. Each fn's boundary (shapes and 1 to 5 invariants) is checked at every call, the
+        crossing is recorded at the gate's level, and a recorded run can be replayed whole or one fn at a time. Failed
+        crossings are gaps carrying their clip; they are what the loop learns from.
+      deps:
+        - { name: ledger }
+        - { name: gate }
+      exports:
+        - "cross(fn, args) → result | gap    (the gate)"
+        - "replay(run) → { identical, diffs }"
+        - "replay_fn(run, name) → { identical, diffs }"
+        - "clip(gap) → the failed crossing with its recorded neighbourhood"
+      gate_pipeline:
+        - "GATE-RPL-001: call → check input against the fn boundary → gap on failure (caller, callee, inputs)"
+        - "GATE-RPL-002: run the fn; impure builtin → record its result as ingress"
+        - "GATE-RPL-003: check output against the boundary → gap on failure"
+        - "GATE-RPL-004: record the crossing at its level, causal parent = the calling crossing"
+        - "GATE-RPL-005: replay → feed recorded inputs and ingress → compare outputs byte for byte"
+      behavioral_contracts:
+        - "Replay of a DATA-level run is byte-identical, or names the first differing crossing."
+        - "Every recorded crossing has a causal parent, except the run's root."
+        - "Interpreter and compiled JS record the same crossings."
+      error_paths:
+        - "boundary check fails → gap (contradiction) at that crossing, never a silent pass"
+        - "replay meets an impure call with no recorded result → gap (evidential), never a live call"
+        - "callee mutates a list or map that crossed its gate → refused by the checker"
 
   events:
     ledger:
