@@ -1,0 +1,36 @@
+envelope: 1
+uuid: nexus-export-phase-docs_2026-10-31-emerge-as-a-system-phasemap.spec::EAS4b_L1_compile
+type: phase
+id: docs_2026-10-31-emerge-as-a-system-phasemap.spec::EAS4b_L1_compile
+context: pipeline phase EAS4b_L1_compile of docs/2026-10-31-emerge-as-a-system-phasemap.spec
+intent: null
+summary: EAS4b_L1_compile (?) — 5 file(s)
+system: idearium
+tags: []
+exported_at: 1793944983982
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793944983982
+lastSeenAt: 1793944983982
+fingerprint: null
+payload:
+  id: EAS4b_L1_compile
+  map: docs/2026-10-31-emerge-as-a-system-phasemap.spec
+  repo: null
+  layer: null
+  status: >-
+    "BUILT 0.60.406 — compiler-door CD-01..04, test-spec-pipeline 13/13; one of two callers moved
+    (lib/spec-collect), idearium/compiler-bridge stopped with its difference named"
+  files:
+    - emerge/emerge/lib/compiler.js
+    - emerge/emerge/server.js
+    - emerge/emerge/registry-components.js
+    - lib/spec-collect.js
+    - emerge/emerge/tests/compiler-door.test.js
+  depends_on:
+    - EAS4a_L0_evaluate
+    - EAS_D7_the_spec_compiler_is_emerges
+  blocks:
+    - MOD-EAS-CALLERS
+  spec: docs/emerge-system.spec
+  graph: 711ff4bf6c27230e

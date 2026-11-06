@@ -1,0 +1,65 @@
+envelope: 1
+uuid: nexus-export-graph-phase:MR11_rewind_the_mind:253f63ad6dbcd990
+type: graph
+id: phase:MR11_rewind_the_mind:253f63ad6dbcd990
+context: dependency graph of phase MR11_rewind_the_mind
+intent: null
+summary: 2 node(s), 0 crossing(s)
+system: idearium
+tags: []
+exported_at: 1793962354157
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793962354157
+lastSeenAt: 1793962354157
+fingerprint: null
+payload:
+  for: MR11_rewind_the_mind
+  kind: phase
+  repo: null
+  hash: 253f63ad6dbcd990
+  nodes:
+    - path: docs/2026-10-02-workshop-codex-rewind-phasemap.spec
+      role: changes
+      exists: true
+      system: null
+    - path: emerge/emerge/spec/field.spec
+      role: changes
+      exists: true
+      system: emerge
+  edges: []
+  crossings: []
+  ready: true
+  dag:
+    layer: 5
+    deps:
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::RF1_relational_field
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::OT1_one_write_path
+    dependents: []
+    upstream:
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::EM0_ground
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::EM1_emerge_core
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::EV0_contracts_for_every_system
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::OT1_one_write_path
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::RF1_relational_field
+      - docs/2026-11-06-pillar-phasemap.spec::PIL1_pillar_stands
+      - docs/2026-11-06-pillar-phasemap.spec::PIL2_contracts
+      - docs/2026-11-06-pillar-phasemap.spec::PIL_D0_the_name_is_pillar
+      - docs/2026-11-06-pillar-phasemap.spec::PIL_D1_the_shape_he_brought
+      - docs/2026-11-06-pillar-phasemap.spec::PIL_D3_written_in_emerge
+    downstream: []
+    blockedBy:
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::RF1_relational_field
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::OT1_one_write_path
+    unlocks: []
+    conflicts: []
+    dangling: []
+    lines:
+      - layer 5 · blocked by RF1_relational_field, OT1_one_write_path
+      - 'depends on (2): RF1_relational_field, OT1_one_write_path · all upstream 10'
+      - 'needed by (0): —'
+    edges:
+      - from: docs/2026-10-02-emerge-field-memory-build-phasemap.spec::RF1_relational_field
+        kind: declared
+      - from: docs/2026-10-02-emerge-field-memory-build-phasemap.spec::OT1_one_write_path
+        kind: declared

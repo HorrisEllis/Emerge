@@ -17,4 +17,5 @@ module.exports = {
   ...require('./level'),
   ...require('./budget'),
   ...require('./seed'),
+  ...require('./admit'),   // EAS4 L0 compound (2026-11-05)
 };

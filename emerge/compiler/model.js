@@ -13,6 +13,9 @@
  *   ollama  POST <url>/api/chat              (default url http://localhost:11434)
  *   openai  POST <url>/v1/chat/completions   (llama.cpp server, LM Studio, vLLM; default url http://localhost:8080)
  * Any other backend (Nexus's Guardian is one, kept in Nexus's repo) is a module a project passes in.
+ *   route   POST <url> { ...extra, prompt, meta } → { ok, text, error?, prompt_tokens?, output_tokens? }   (EAS_D9, 2026-11-05: through
+ *           the door a model cannot be handed over in-process, so a caller names one by its route; James: "Emerge calls back by route".
+ *           Any system that answers that contract can be the model; Nexus's Guardian is one.)
  *
  * Settings: createModel({ api, url, model, temperature, ctx, timeoutMs }) or env EMERGE_MODEL_API, EMERGE_MODEL_URL,
  * EMERGE_MODEL (default qwen2.5-coder:7b). Zero dependencies beyond node.
@@ -51,7 +54,21 @@ function createModel(o = {}) {
       return { ok: true, text: r.data.choices?.[0]?.message?.content ?? '', prompt_tokens: r.data.usage?.prompt_tokens ?? 0, output_tokens: r.data.usage?.completion_tokens ?? 0 };
     } };
   }
-  if (api !== 'ollama') throw new Error(`unknown model api "${api}" (ollama | openai, or pass a model object)`);
+  if (api === 'route') {
+    if (!o.url) throw new Error('model api "route" needs a url (POST <url> { prompt, meta } → { ok, text })');
+    const routeName = o.name ?? `route:${url}`;
+    return { name: routeName, async generate(prompt, meta) {
+      // extra: fields the route's own contract takes beside the prompt (e.g. Guardian's provider), sent as given
+      const extra = (o.extra && typeof o.extra === 'object' && !Array.isArray(o.extra)) ? o.extra : {};
+      const r = await post(url, { ...extra, prompt, meta: meta ?? null }, timeoutMs);
+      if (!r.ok) return { ok: false, error: r.error ?? r.data?.error ?? `the model route answered ${r.status}` };
+      const d = r.data || {};
+      if (d.ok === false) return { ok: false, error: d.error || 'the model route said no, without a reason' };
+      if (typeof d.text !== 'string') return { ok: false, error: 'the model route answered without text' };
+      return { ok: true, text: d.text, prompt_tokens: d.prompt_tokens ?? 0, output_tokens: d.output_tokens ?? 0 };
+    } };
+  }
+  if (api !== 'ollama') throw new Error(`unknown model api "${api}" (ollama | openai | route, or pass a model object)`);
   return { name, async generate(prompt) {
     const r = await post(url + '/api/chat', { model, messages: [{ role: 'user', content: prompt }], stream: false, options: { temperature, num_ctx: o.ctx ?? 8192 } }, timeoutMs);
     if (!r.ok) return { ok: false, error: r.error ?? r.data?.error ?? String(r.status) };

@@ -1,0 +1,227 @@
+envelope: 1
+uuid: nexus-export-graph-phase:EAS4d_L3_run:f3c688d7074bd63d
+type: graph
+id: phase:EAS4d_L3_run:f3c688d7074bd63d
+context: dependency graph of phase EAS4d_L3_run
+intent: null
+summary: 27 node(s), 0 crossing(s)
+system: idearium
+tags: []
+exported_at: 1793944983986
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793944983986
+lastSeenAt: 1793944983986
+fingerprint: null
+payload:
+  for: EAS4d_L3_run
+  kind: phase
+  repo: null
+  hash: f3c688d7074bd63d
+  nodes:
+    - path: emerge/emerge/compiler/model.js
+      role: changes
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/t2-gate.js
+      role: changes
+      exists: true
+      system: emerge
+    - path: emerge/emerge/server.js
+      role: changes
+      exists: true
+      system: emerge
+    - path: guardian/server.js
+      role: changes
+      exists: true
+      system: guardian
+    - path: lib/build-pipeline.js
+      role: changes
+      exists: true
+      system: lib
+    - path: emerge/emerge/build-spec.js
+      role: used-by
+      exists: true
+      system: emerge
+    - path: emerge/emerge/lib/compiler.js
+      role: used-by
+      exists: true
+      system: emerge
+    - path: emerge/emerge/test/target.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/tests/compiler-door.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/tests/lang-door.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/tests/nesting.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/tests/skeleton.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: guardian/dropzone.js
+      role: used-by
+      exists: true
+      system: guardian
+    - path: guardian/guardian-service.js
+      role: used-by
+      exists: true
+      system: guardian
+    - path: lib/execution-pipeline.js
+      role: used-by
+      exists: true
+      system: lib
+    - path: emerge/emerge/compiler/emit-emerge.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/pipeline.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/target.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/lang/index.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/lib/commands.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/lib/handoff.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/lib/system.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: guardian/config.js
+      role: uses
+      exists: true
+      system: guardian
+    - path: guardian/event-taxonomy.js
+      role: uses
+      exists: true
+      system: guardian
+    - path: guardian/lib/ncp.js
+      role: uses
+      exists: true
+      system: guardian
+    - path: lib/data-home.js
+      role: uses
+      exists: true
+      system: lib
+    - path: lib/event-taxonomy-pattern.js
+      role: uses
+      exists: true
+      system: lib
+  edges:
+    - from: emerge/emerge/compiler/t2-gate.js
+      to: emerge/emerge/compiler/target.js
+      kind: requires
+    - from: emerge/emerge/compiler/t2-gate.js
+      to: emerge/emerge/compiler/emit-emerge.js
+      kind: requires
+    - from: emerge/emerge/compiler/t2-gate.js
+      to: emerge/emerge/lang/index.js
+      kind: requires
+    - from: emerge/emerge/compiler/t2-gate.js
+      to: emerge/emerge/compiler/pipeline.js
+      kind: requires
+    - from: emerge/emerge/server.js
+      to: emerge/emerge/lib/system.js
+      kind: requires
+    - from: emerge/emerge/server.js
+      to: emerge/emerge/lib/commands.js
+      kind: requires
+    - from: emerge/emerge/server.js
+      to: emerge/emerge/lib/handoff.js
+      kind: requires
+    - from: guardian/server.js
+      to: lib/data-home.js
+      kind: requires
+    - from: guardian/server.js
+      to: guardian/config.js
+      kind: requires
+    - from: guardian/server.js
+      to: guardian/event-taxonomy.js
+      kind: requires
+    - from: guardian/server.js
+      to: lib/event-taxonomy-pattern.js
+      kind: requires
+    - from: guardian/server.js
+      to: guardian/lib/ncp.js
+      kind: requires
+    - from: emerge/emerge/build-spec.js
+      to: emerge/emerge/compiler/t2-gate.js
+      kind: requires
+    - from: emerge/emerge/lib/compiler.js
+      to: emerge/emerge/compiler/t2-gate.js
+      kind: requires
+    - from: emerge/emerge/test/target.test.js
+      to: emerge/emerge/compiler/t2-gate.js
+      kind: requires
+    - from: emerge/emerge/tests/compiler-door.test.js
+      to: emerge/emerge/server.js
+      kind: requires
+    - from: emerge/emerge/tests/lang-door.test.js
+      to: emerge/emerge/server.js
+      kind: requires
+    - from: emerge/emerge/tests/nesting.test.js
+      to: emerge/emerge/server.js
+      kind: requires
+    - from: emerge/emerge/tests/skeleton.test.js
+      to: emerge/emerge/server.js
+      kind: requires
+    - from: guardian/dropzone.js
+      to: guardian/server.js
+      kind: requires
+    - from: guardian/guardian-service.js
+      to: guardian/server.js
+      kind: requires
+    - from: lib/execution-pipeline.js
+      to: lib/build-pipeline.js
+      kind: requires
+  crossings: []
+  ready: true
+  dag:
+    layer: 4
+    deps:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4c_L2_build
+    dependents:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4e_the_callback_routes
+    upstream:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4a_L0_evaluate
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4b_L1_compile
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4c_L2_build
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D5_one_primitive_per_gate
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D6_emerge_is_a_system_in_nexus
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D7_the_spec_compiler_is_emerges
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D9_emerge_calls_back_by_route
+    downstream:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4e_the_callback_routes
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4f_the_callers_switch
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4g_lib_emerge_archived
+    blockedBy: []
+    unlocks: []
+    conflicts: []
+    dangling: []
+    lines:
+      - layer 4
+      - 'depends on (1): EAS4c_L2_build · all upstream 7'
+      - 'needed by (1): EAS4e_the_callback_routes · all downstream 3'
+    edges:
+      - from: docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4c_L2_build
+        kind: declared

@@ -1,0 +1,35 @@
+envelope: 1
+uuid: nexus-export-phase-docs_2026-10-31-emerge-as-a-system-phasemap.spec::EAS4d_L3_run
+type: phase
+id: docs_2026-10-31-emerge-as-a-system-phasemap.spec::EAS4d_L3_run
+context: pipeline phase EAS4d_L3_run of docs/2026-10-31-emerge-as-a-system-phasemap.spec
+intent: null
+summary: EAS4d_L3_run (?) — 5 file(s)
+system: idearium
+tags: []
+exported_at: 1793944983986
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793944983986
+lastSeenAt: 1793944983986
+fingerprint: null
+payload:
+  id: EAS4d_L3_run
+  map: docs/2026-10-31-emerge-as-a-system-phasemap.spec
+  repo: null
+  layer: null
+  status: >-
+    "BUILT (Emerge's side) 0.60.407 — compiler-door CD-07 (11 T2 nodes through a model route, 11
+    complete); its callers (guardian/server.js, lib/build-pipeline.js) not switched"
+  files:
+    - emerge/emerge/compiler/t2-gate.js
+    - emerge/emerge/compiler/model.js
+    - emerge/emerge/server.js
+    - guardian/server.js
+    - lib/build-pipeline.js
+  depends_on:
+    - EAS4c_L2_build
+  blocks:
+    - MOD-EAS-CALLERS
+  spec: docs/emerge-system.spec
+  graph: f3c688d7074bd63d

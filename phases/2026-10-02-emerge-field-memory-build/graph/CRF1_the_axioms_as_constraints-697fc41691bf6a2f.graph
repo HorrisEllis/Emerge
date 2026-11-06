@@ -1,0 +1,60 @@
+envelope: 1
+uuid: nexus-export-graph-phase:CRF1_the_axioms_as_constraints:697fc41691bf6a2f
+type: graph
+id: phase:CRF1_the_axioms_as_constraints:697fc41691bf6a2f
+context: dependency graph of phase CRF1_the_axioms_as_constraints
+intent: null
+summary: 2 node(s), 0 crossing(s)
+system: idearium
+tags: []
+exported_at: 1793962354164
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793962354164
+lastSeenAt: 1793962354164
+fingerprint: null
+payload:
+  for: CRF1_the_axioms_as_constraints
+  kind: phase
+  repo: null
+  hash: 697fc41691bf6a2f
+  nodes:
+    - path: cos/spec/check-catalogue.spec
+      role: changes
+      exists: true
+      system: cos
+    - path: docs/AXIOMS-v3.1.md
+      role: changes
+      exists: true
+      system: null
+  edges: []
+  crossings: []
+  ready: true
+  dag:
+    layer: 4
+    deps:
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::RF1_relational_field
+    dependents: []
+    upstream:
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::EM0_ground
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::EM1_emerge_core
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::EV0_contracts_for_every_system
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::RF1_relational_field
+      - docs/2026-11-06-pillar-phasemap.spec::PIL1_pillar_stands
+      - docs/2026-11-06-pillar-phasemap.spec::PIL2_contracts
+      - docs/2026-11-06-pillar-phasemap.spec::PIL_D0_the_name_is_pillar
+      - docs/2026-11-06-pillar-phasemap.spec::PIL_D1_the_shape_he_brought
+      - docs/2026-11-06-pillar-phasemap.spec::PIL_D3_written_in_emerge
+    downstream: []
+    blockedBy:
+      - docs/2026-10-02-emerge-field-memory-build-phasemap.spec::RF1_relational_field
+    unlocks: []
+    conflicts: []
+    dangling: []
+    lines:
+      - layer 4 · blocked by RF1_relational_field
+      - 'depends on (1): RF1_relational_field · all upstream 9'
+      - 'needed by (0): —'
+    edges:
+      - from: docs/2026-10-02-emerge-field-memory-build-phasemap.spec::RF1_relational_field
+        kind: declared

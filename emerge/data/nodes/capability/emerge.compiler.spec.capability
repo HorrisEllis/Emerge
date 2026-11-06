@@ -1,0 +1,18 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-comp-capa-0000-2026-1105-000000000002",
+  "type": "capability",
+  "id": "emerge.compiler.spec",
+  "system": "emerge",
+  "summary": "compile a spec",
+  "payload": {
+    "component": "emerge.compiler",
+    "summary": "a module spec (meta/modules/schemas YAML) compiled to its T0/T1 TypeScript package, no model, nothing written outside a fresh work folder",
+    "commands": [
+      "emerge.compiler.compile",
+      "emerge.compiler.build",
+      "emerge.compiler.run",
+      "emerge.compiler.check"
+    ]
+  }
+}

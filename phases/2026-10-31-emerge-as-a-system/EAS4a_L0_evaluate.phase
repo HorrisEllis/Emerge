@@ -1,0 +1,32 @@
+envelope: 1
+uuid: nexus-export-phase-docs_2026-10-31-emerge-as-a-system-phasemap.spec::EAS4a_L0_evaluate
+type: phase
+id: docs_2026-10-31-emerge-as-a-system-phasemap.spec::EAS4a_L0_evaluate
+context: pipeline phase EAS4a_L0_evaluate of docs/2026-10-31-emerge-as-a-system-phasemap.spec
+intent: null
+summary: EAS4a_L0_evaluate (?) — 3 file(s)
+system: idearium
+tags: []
+exported_at: 1793944983980
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793944983980
+lastSeenAt: 1793944983980
+fingerprint: null
+payload:
+  id: EAS4a_L0_evaluate
+  map: docs/2026-10-31-emerge-as-a-system-phasemap.spec
+  repo: null
+  layer: null
+  status: '"BUILT 0.60.405 — test-warp2 7/7, test-emerge-core 6/6, emergence and WARP suites 198/198"'
+  files:
+    - emerge/emerge/core/admit.js
+    - emerge/emerge/core/constraint.js
+    - tests/modules/test-warp2.test.js
+  depends_on:
+    - EAS_D5_one_primitive_per_gate
+    - EAS_D6_emerge_is_a_system_in_nexus
+  blocks:
+    - MOD-EAS-CALLERS
+  spec: docs/emerge-system.spec
+  graph: 7b08e8193b887f44

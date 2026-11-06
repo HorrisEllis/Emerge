@@ -17,7 +17,10 @@ const http = require('http');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const SPEC = path.join(ROOT, 'spec', 'cie-eg.spec');
+// 2026-11-06: a frozen copy of cie-eg.spec as it stood before James decided D3, D6–D10 (with its open decisions and the modules
+// waiting on them), so this test stays about the compiler — the plan, the open-decision listing, T2 — not about where his decisions
+// stand. The live spec's plan is checked by target.test.js. Was: path.join(ROOT, 'spec', 'cie-eg.spec') (kept here, §0.3).
+const SPEC = path.join(__dirname, 'fixtures', 'cie-eg.before-2026-11-06.spec');
 let p = 0, f = 0;
 function check(label, cond, detail) { if (cond) { p++; process.stdout.write('.'); } else { f++; console.log('\nFAIL [' + label + ']' + (detail ? ': ' + detail : '')); } }
 

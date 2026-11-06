@@ -1,0 +1,30 @@
+envelope: 1
+uuid: nexus-export-phase-docs_2026-10-02-emerge-field-memory-build-phasemap.spec::MR11_rewind_the_mind
+type: phase
+id: docs_2026-10-02-emerge-field-memory-build-phasemap.spec::MR11_rewind_the_mind
+context: pipeline phase MR11_rewind_the_mind of docs/2026-10-02-emerge-field-memory-build-phasemap.spec
+intent: null
+summary: MR11_rewind_the_mind (?) — 2 file(s)
+system: idearium
+tags: []
+exported_at: 1793962354157
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793962354157
+lastSeenAt: 1793962354157
+fingerprint: null
+payload:
+  id: MR11_rewind_the_mind
+  map: docs/2026-10-02-emerge-field-memory-build-phasemap.spec
+  repo: null
+  layer: null
+  status: OPEN
+  files:
+    - emerge/emerge/spec/field.spec
+    - docs/2026-10-02-workshop-codex-rewind-phasemap.spec
+  depends_on:
+    - RF1_relational_field
+    - OT1_one_write_path
+  blocks: []
+  spec: null
+  graph: 253f63ad6dbcd990

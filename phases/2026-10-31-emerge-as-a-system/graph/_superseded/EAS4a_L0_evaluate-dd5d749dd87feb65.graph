@@ -1,0 +1,95 @@
+envelope: 1
+uuid: nexus-export-graph-phase:EAS4a_L0_evaluate:dd5d749dd87feb65
+type: graph
+id: phase:EAS4a_L0_evaluate:dd5d749dd87feb65
+context: dependency graph of phase EAS4a_L0_evaluate
+intent: null
+summary: 7 node(s), 0 crossing(s)
+system: idearium
+tags: []
+exported_at: 1793910797504
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793910797504
+lastSeenAt: 1793910797504
+fingerprint: null
+payload:
+  for: EAS4a_L0_evaluate
+  kind: phase
+  repo: null
+  hash: dd5d749dd87feb65
+  nodes:
+    - path: emerge/emerge/core/admit.js
+      role: changes
+      exists: true
+      system: emerge
+    - path: emerge/emerge/core/constraint.js
+      role: changes
+      exists: true
+      system: emerge
+    - path: tests/modules/test-warp2.test.js
+      role: changes
+      exists: true
+      system: null
+    - path: emerge/emerge/core/budget.js
+      role: used-by
+      exists: true
+      system: emerge
+    - path: emerge/emerge/core/field.js
+      role: used-by
+      exists: true
+      system: emerge
+    - path: emerge/emerge/core/index.js
+      role: used-by
+      exists: true
+      system: emerge
+    - path: emerge/emerge/lang/runtime.js
+      role: used-by
+      exists: true
+      system: emerge
+  edges:
+    - from: emerge/emerge/core/index.js
+      to: emerge/emerge/core/admit.js
+      kind: requires
+    - from: emerge/emerge/core/budget.js
+      to: emerge/emerge/core/constraint.js
+      kind: requires
+    - from: emerge/emerge/core/field.js
+      to: emerge/emerge/core/constraint.js
+      kind: requires
+    - from: emerge/emerge/lang/runtime.js
+      to: emerge/emerge/core/constraint.js
+      kind: requires
+  crossings: []
+  ready: true
+  dag:
+    layer: 1
+    deps:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D5_one_primitive_per_gate
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D6_emerge_is_a_system_in_nexus
+    dependents:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4b_L1_compile
+    upstream:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D5_one_primitive_per_gate
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D6_emerge_is_a_system_in_nexus
+    downstream:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4b_L1_compile
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4c_L2_build
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4d_L3_run
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4e_the_callback_routes
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4f_the_callers_switch
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4g_lib_emerge_archived
+    blockedBy: []
+    unlocks:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4b_L1_compile
+    conflicts: []
+    dangling: []
+    lines:
+      - layer 1
+      - 'depends on (2): EAS_D5_one_primitive_per_gate, EAS_D6_emerge_is_a_system_in_nexus'
+      - 'needed by (1): EAS4b_L1_compile · all downstream 6 · finishing it unlocks EAS4b_L1_compile'
+    edges:
+      - from: docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D5_one_primitive_per_gate
+        kind: declared
+      - from: docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D6_emerge_is_a_system_in_nexus
+        kind: declared

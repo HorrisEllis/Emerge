@@ -174,7 +174,7 @@ spec:
           on_non_nfc: { gap_type: structural, pressure: 0.5 }
           explicit_hook: text.normalize
           open:
-            status: OPEN
+            status: DECIDED   # 2026-11-06, D5: "Restricted subset first" (James)
             question: "Build the Unicode composition tables in .eg, or limit hashed text to a stated subset at first (ASCII identifiers are trivially NFC)?"
             decision_ref: D5
         identifiers:
@@ -326,7 +326,7 @@ spec:
           optional: "A checkpoint can carry the full sealed state, making it a restorable snapshot."
         dedup:
           number: "4.7"
-          status: OPEN
+          status: DECIDED   # D4 (James, 2026-11-06): no lossy dedup; a failure-mode report to learn from (confirmed: "Failure mode report.")
           text: "Cobalt counts repeated events instead of storing copies. That conflicts with an exact, replayable history."
           proposal: "Chain every event; keep the repeat count as a separate index, or write periodic count entries."
           question: "Do you want dedup at all?"
@@ -487,7 +487,7 @@ spec:
           rule: "Unique by construction. A nonce must never repeat under one key, since repetition breaks GCM."
         keys:
           number: "8.4"
-          status: OPEN
+          status: DECIDED   # D3 (James, 2026-11-06): "Credential store with an export to file. Optional passphrase."
           derivation: "A root key derives one key per component with HKDF-SHA-256, using the component uuid as context. A component can decrypt only its own entries."
           release: "The root key is released only if the genesis verifies, so altered code cannot open the ledger."
           question: "Where does the root key live, and what happens if it is lost? (OS credential store, a file, a passphrase, hardware token.)"
@@ -511,7 +511,7 @@ spec:
       chain_id: "a UUID written in the genesis, used in nonces"
       entry_identity: "its hash; no separate entry id"
       layout:
-        status: OPEN
+        status: DECIDED   # D6, James, 2026-11-06: "Standard form"
         options: ["standard 8-4-4-4-12 with version and variant bits set", "emerge-component- prefix form"]
         built: "for the chain id only: the standard form, version 8 and variant 10, derived from SHA-256(\"eg.chain.v1\" 0x00 seed \" \" version) so two runs from one seed and build agree."
         decision_ref: D6
@@ -522,7 +522,7 @@ spec:
       subsections:
         stages:
           number: "10.1"
-          status: OPEN
+          status: DECIDED   # D1: Node was stage 0, self-hosting proven (selfhost.test.js 16/16, 2026-11-06)
           stages:
             - { stage: 0, name: scaffold,  text: "The existing Node interpreter, used once and then retired. It runs the .eg compiler to emit the first emerge.exe." }
             - { stage: 1, name: compiler,  text: "The compiler, written in Emerge: lexer, parser, checker, code generator." }
@@ -712,11 +712,11 @@ spec:
         - { failure: "delete of a row another row refs", type: causal, pressure: 0.7 }
       schema_refs: [SchemaDecl, StoreDecl, RowEntryBody]
       open:
-        - { id: DT-Q1, question: "Keyword: schema (as here), type, or record? record is already a statement and type is a contextual word in gap." }
-        - { id: DT-Q2, question: "Is the ledger the only storage (tables rebuilt by replaying from the last checkpoint), or does a store keep a sealed snapshot file with the ledger as its log?" }
-        - { id: DT-Q3, question: "Queries: one table only at first, or joins along ref fields from the start?" }
-        - { id: DT-Q4, question: "Indexes beyond the key: declared in the schema, in the store, or not at all at first?" }
-        - { id: DT-Q5, question: "Deleting a referenced row: refuse with a gap (as proposed), or allow a declared cascade?" }
+        - { id: DT-Q1, question: "Keyword: schema (as here), type, or record? record is already a statement and type is a contextual word in gap.", answer: "James, 2026-11-06: \"schema\"" }
+        - { id: DT-Q2, question: "Is the ledger the only storage (tables rebuilt by replaying from the last checkpoint), or does a store keep a sealed snapshot file with the ledger as its log?", answer: "James, 2026-11-06: \"Snapshot + ledger\"" }
+        - { id: DT-Q3, question: "Queries: one table only at first, or joins along ref fields from the start?", answer: "James, 2026-11-06: \"One table, no indexes\" (one table at first)" }
+        - { id: DT-Q4, question: "Indexes beyond the key: declared in the schema, in the store, or not at all at first?", answer: "James, 2026-11-06: \"One table, no indexes\" (no indexes beyond the key at first)" }
+        - { id: DT-Q5, question: "Deleting a referenced row: refuse with a gap (as proposed), or allow a declared cascade?", answer: "James, 2026-11-06: \"Refuse with a gap\"" }
 
     s15_chunks_as_layers:
       number: "15"
@@ -817,10 +817,10 @@ spec:
         - "component boundary (1 to 5 invariants) becomes the boundary of every chunk."
         - "roads become one edge type among several."
       open:
-        - { id: CH-Q1, question: "Does layer I (the contract) hold every edge, including links between data rows, or only structural ones (roads, dependencies) while data edges stay inside their store? Holding all makes every new row link change the contract hash." }
-        - { id: CH-Q2, question: "Edge types: a fixed set (road, ref, depends_on, part_of), or declarable like kinds?" }
-        - { id: CH-Q3, question: "Code as chunks: store .eg source content-addressed (fns and components by hash), or keep files and derive chunks from them?" }
-        - { id: CH-Q4, question: "Where do known-answer vectors come from for each chunk (DF-06), and who signs off that a source is independent?" }
+        - { id: CH-Q1, question: "Does layer I (the contract) hold every edge, including links between data rows, or only structural ones (roads, dependencies) while data edges stay inside their store? Holding all makes every new row link change the contract hash.", answer: "the coder's pick by his delegation, 2026-11-06 (his: \"Pick the most effective and high leverage\"): structural edges only (roads, dependencies, part_of) in layer I; data links stay inside their store; his to overturn" }
+        - { id: CH-Q2, question: "Edge types: a fixed set (road, ref, depends_on, part_of), or declarable like kinds?", recommended: "2026-11-06, an outside analysis (ChatGPT) he brought, picking by leverage: fixed core set (road, ref, depends_on, part_of) plus declared custom types: each with an explicit declaration and validation rules, namespaced; an unknown type is a diagnostic, never silently given meaning. His adoption to confirm" }
+        - { id: CH-Q3, question: "Code as chunks: store .eg source content-addressed (fns and components by hash), or keep files and derive chunks from them?", answer: "the coder's pick by his delegation, 2026-11-06 (his: \"Pick the most effective and high leverage\"): .eg code stored content-addressed (fns and components by hash); his to overturn" }
+        - { id: CH-Q4, question: "Where do known-answer vectors come from for each chunk (DF-06), and who signs off that a source is independent?", recommended: "2026-11-06, an outside analysis (ChatGPT) he brought, picking by leverage: independent, provenance-tracked fixtures: from independently specified examples, reference implementations or independently derived outputs; each records source, version, expected result and derivation; sign-off by a reviewer who did not write the code; adversarial, boundary and regression cases required. Independent authorship does not by itself prove correctness. His adoption to confirm" }
         - { id: CH-Q5, question: "Is the synthesizer written in .eg from the start (so emerge.exe runs it, section 0), or prototyped in the spec compiler first?" }
 
     s16_the_loop:
@@ -927,16 +927,16 @@ spec:
       number: "12"
       title: Open decisions, in priority order
       decisions:
-        - { id: D1, priority: 1, question: "Node as stage 0?",                                          ref: "10.1", status: OPEN }
+        - { id: D1, priority: 1, question: "Node as stage 0?",                                          ref: "10.1", status: DECIDED, resolution: "Yes, and already done: Node ran once as stage 0; native/bin/emerge rebuilds itself byte for byte (lang/test/selfhost.test.js 16/16, AT-11, 2026-11-06). James, asked: \"Look at main. Some of this might be addressed already\"" }
         - { id: D2, priority: 2, question: "Add int, bytes, and bitwise operators",                     ref: "3",    status: DECIDED, resolution: "Real 64-bit int added." }
-        - { id: D3, priority: 3, question: "Root key storage and loss policy.",                         ref: "8.4",  status: OPEN }
-        - { id: D4, priority: 4, question: "Keep Cobalt-style dedup?",                                  ref: "4.7",  status: OPEN, note: "13.6 proposes the count as an index" }
-        - { id: D5, priority: 5, question: "NFC tables in .eg, or a restricted subset first?",          ref: "2.3",  status: OPEN }
-        - { id: D6, priority: 6, question: "UUID layout: standard form or prefix form?",                ref: "9",    status: OPEN }
-        - { id: D7, priority: 7, question: "Contract syntax: new contract block as proposed, or reuse wire only?", ref: "6.1", status: OPEN }
-        - { id: D8, priority: 8, question: "Data types and stores (14): adopt, and answer DT-Q1..Q5?",  ref: "14",   status: OPEN, note: "new in cie-eg.spec" }
-        - { id: D9, priority: 9, question: "Chunks as layers (15): adopt, and answer CH-Q1..Q3?",       ref: "15",   status: OPEN, note: "new in cie-eg.spec; bench/chunks.js measures it" }
-        - { id: D10, priority: 10, question: "The loop (16): adopt, and keep or override its defaults_to_override?", ref: "16", status: OPEN, note: "new 2026-10-31; MOD-REPLAY builds on it" }
+        - { id: D3, priority: 3, question: "Root key storage and loss policy.",                         ref: "8.4",  status: DECIDED, resolution: "James, 2026-11-06: \"Options for all maybe? Backup to a file for sure.\" Read as: all four stores offered, chosen per machine (OS credential store, passphrase, file, hardware token), and a backup to a file always kept. Confirmed 2026-11-06: \"Credential store with an export to file. Optional passphrase.\" — the OS credential store is the default, with an export to a file; a passphrase is optional." }
+        - { id: D4, priority: 4, question: "Keep Cobalt-style dedup?",                                  ref: "4.7",  status: DECIDED, note: "13.6 proposes the count as an index", resolution: "James, 2026-11-06: \"Keep a failure more report so it can learn.\" Confirmed 2026-11-06: \"Failure mode report.\" — no lossy dedup; every event stays chained; the repeats of a failure are gathered into a failure-mode report the system learns from (the count kept beside the history, as 13.6)." }
+        - { id: D5, priority: 5, question: "NFC tables in .eg, or a restricted subset first?",          ref: "2.3",  status: DECIDED, resolution: "James, 2026-11-06: \"Restricted subset first\". Hashed text, ids and ledger bodies are limited to a stated subset at first (ASCII identifiers are trivially NFC); anything outside it is refused with a gap, never normalized silently; the full tables later." }
+        - { id: D6, priority: 6, question: "UUID layout: standard form or prefix form?",                ref: "9",    status: DECIDED, resolution: "James, 2026-11-06: \"Standard form\" — 8-4-4-4-12 with version and variant bits set (the chain ids already are)." }
+        - { id: D7, priority: 7, question: "Contract syntax: new contract block as proposed, or reuse wire only?", ref: "6.1", status: DECIDED, resolution: "James, 2026-11-06: \"New contract block\" — a contract { … } block as proposed (gates, steps, limits in one place)." }
+        - { id: D8, priority: 8, question: "Data types and stores (14): adopt, and answer DT-Q1..Q5?",  ref: "14",   status: DECIDED, note: "new in cie-eg.spec", resolution: "Adopted with DT-Q1..Q5 answered by James, 2026-11-06: schema · snapshot + ledger · one table, no indexes at first · refuse with a gap." }
+        - { id: D9, priority: 9, question: "Chunks as layers (15): adopt, and answer CH-Q1..Q3?",       ref: "15",   status: DECIDED, note: "new in cie-eg.spec; bench/chunks.js measures it", resolution: "Adopted 2026-11-06. CH-Q1 and CH-Q3 were his to pick and he delegated them: \"Pick the most effective and high leverage\". The coder picked structural edges in the contract (a row link must not change the contract hash) and code stored by hash (stable identity, stored once, provable in the ledger, one hash per verified primitive). CH-Q5 answered by doing (.eg first, 2026-10-31). CH-Q2 (edge types fixed or declarable) and CH-Q4 (known-answer vectors and who signs them off) still open." }
+        - { id: D10, priority: 10, question: "The loop (16): adopt, and keep or override its defaults_to_override?", ref: "16", status: DECIDED, note: "new 2026-10-31; MOD-REPLAY builds on it", resolution: "James, 2026-11-06: \"Adopt, keep defaults\" — the loop adopted with every default as stated." }
 
   # ══════════════════════════════════════════════════════════════════════════
   # COMPILER VIEW — modules, events, schemas, enforcement, derived from the sections above
@@ -1098,7 +1098,7 @@ spec:
       build:
         state: not_built
         file: emerge/lang/cie/contract.eg
-        blocked_by: [D7]
+        blocked_by: []   # D7 decided 2026-11-06 (James); removed per build_plan
         next: "parse the contract block, contract_hash; wire compiles to a road."
       spec_ref: s06_contract_and_gate.contract_format
       description: "The interaction contract: version, text settings, gate settings, roads. wire compiles to a road. contract_hash goes into genesis and every checkpoint."
@@ -1196,7 +1196,7 @@ spec:
       build:
         state: not_built
         file: emerge/lang/cie/seal.eg
-        blocked_by: [D3]
+        blocked_by: []   # D3 decided 2026-11-06 (James); removed per build_plan
         next: "AES-256-GCM sealing once root key storage is decided."
       spec_ref: s08_sealing
       description: "AES-256-GCM sealing of entry bodies with readable AAD, per-component HKDF keys, nonce from chain id and seq, rekey entries."
@@ -1228,7 +1228,7 @@ spec:
       build:
         state: partial
         file: emerge/lang/cie/identity.eg
-        blocked_by: [D6]
+        blocked_by: []   # D6 decided 2026-11-06 (James); removed per build_plan
         existing:
           - "emerge/lang/runtime.js: chain id (UUID v8)"
           - "emerge/lang/components.js: component uuid in the emerge-component- prefix form"
@@ -1446,7 +1446,7 @@ spec:
       build:
         state: not_built
         file: emerge/lang/cie/store.eg
-        blocked_by: [D8]
+        blocked_by: []   # D8 decided 2026-11-06 (James); removed per build_plan
         next: "schemas and stores (section 14) once adopted."
       spec_ref: s14_data_types_and_stores
       status: PROPOSED
@@ -1482,7 +1482,7 @@ spec:
       build:
         state: partial
         file: emerge/lang/cie/synth.eg
-        blocked_by: [D9]
+        blocked_by: []   # D9 decided 2026-11-06 (James); removed per build_plan
         built: "2026-10-31: rungs 1 and 2 in .eg (CH-Q5 answered by doing: .eg first). Forms cases, predicate, formula, reject_if; template fail_fast_scan. bench/chunks.js derive: utf8_decode 6/6 units generated and passing, the assembled decoder passes the monolith tests, byte-identical on a second run, 0 model calls."
         next: "known-answer vectors from outside the spec (DF-06); a cached result by boundary hash (DF-03); more templates (fold, validate, route); rung 3 stays a gap, never a model (section 16, LP-03)."
       spec_ref: s15_chunks_as_layers.deterministic_first

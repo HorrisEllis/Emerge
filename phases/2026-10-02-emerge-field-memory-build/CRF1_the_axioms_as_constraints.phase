@@ -1,0 +1,31 @@
+envelope: 1
+uuid: nexus-export-phase-docs_2026-10-02-emerge-field-memory-build-phasemap.spec::CRF1_the_axioms_as_constraints
+type: phase
+id: docs_2026-10-02-emerge-field-memory-build-phasemap.spec::CRF1_the_axioms_as_constraints
+context: >-
+  pipeline phase CRF1_the_axioms_as_constraints of
+  docs/2026-10-02-emerge-field-memory-build-phasemap.spec
+intent: null
+summary: CRF1_the_axioms_as_constraints (?) — 2 file(s)
+system: idearium
+tags: []
+exported_at: 1793962354164
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793962354164
+lastSeenAt: 1793962354164
+fingerprint: null
+payload:
+  id: CRF1_the_axioms_as_constraints
+  map: docs/2026-10-02-emerge-field-memory-build-phasemap.spec
+  repo: null
+  layer: null
+  status: OPEN
+  files:
+    - docs/AXIOMS-v3.1.md
+    - cos/spec/check-catalogue.spec
+  depends_on:
+    - RF1_relational_field
+  blocks: []
+  spec: null
+  graph: 697fc41691bf6a2f
