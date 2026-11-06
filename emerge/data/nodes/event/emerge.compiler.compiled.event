@@ -1,0 +1,15 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-comp-even-0000-2026-1105-000000000005",
+  "type": "event",
+  "id": "emerge.compiler.compiled",
+  "system": "emerge",
+  "summary": "emerge.compiler.compile answered",
+  "payload": {
+    "command": "emerge.compiler.compile",
+    "payload": {
+      "command": "string",
+      "result": "object"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-comp-comp-0000-2026-1105-000000000001",
+  "type": "component",
+  "id": "emerge.compiler",
+  "system": "emerge",
+  "summary": "the spec compiler through the door",
+  "payload": {
+    "file": "lib/compiler.js",
+    "intent": "Emerge's spec compiler (T0/T1) served through the system's door: a spec's text in, the emitted files' text out, built on the local host",
+    "version": "1.0.0",
+    "status": "built",
+    "capabilities": [
+      "emerge.compiler.spec"
+    ],
+    "hooks": [
+      "emerge.core.http"
+    ],
+    "consumers": []
+  }
+}

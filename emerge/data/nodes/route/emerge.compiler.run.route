@@ -1,0 +1,13 @@
+{
+  "envelope": 1,
+  "uuid": "emerge-comp-rout-0003-2026-1105-000000000010",
+  "type": "route",
+  "id": "emerge.compiler.run",
+  "system": "emerge",
+  "summary": "POST /compiler/run",
+  "payload": {
+    "method": "POST",
+    "path": "/compiler/run",
+    "command": "emerge.compiler.run"
+  }
+}

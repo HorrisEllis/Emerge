@@ -104,6 +104,37 @@ function recordPath(outputDir, name) {
  *   h: a host object · a path to a module exporting one (or exporting createHost()) · 'local' · undefined
  *   undefined → process.env.EMERGE_HOST if set, else the local host.
  */
+/**
+ * routeHost({ name, ping?, preflight?, writeback?, sync? }) — a host named by its routes (EAS_D9, 2026-11-05; James: "Emerge calls back by
+ * route"). Each method present is a URL Emerge POSTs its arguments to, as JSON; the reply is the method's result. A method left out
+ * behaves like the local host's. A route that does not answer is said in the result (§1.2), never taken as a pass.
+ */
+function _postJson(url, body, timeoutMs = 30000) {
+  const http = require('http'), https = require('https');
+  return new Promise(resolve => {
+    let u; try { u = new URL(url); } catch (e) { return resolve({ ok: false, error: `bad host url ${url}` }); }
+    const data = JSON.stringify(body ?? {});
+    const req = (u.protocol === 'https:' ? https : http).request({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, method: 'POST', timeout: timeoutMs,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, res => {
+      let raw = ''; res.on('data', c => raw += c);
+      res.on('end', () => { let d; try { d = JSON.parse(raw); } catch { return resolve({ ok: false, error: `host route ${url} answered non-JSON (${res.statusCode})` }); }
+        resolve(res.statusCode < 400 ? d : { ok: false, error: (d && d.error) || `host route ${url} answered ${res.statusCode}` }); });
+    });
+    req.on('error', e => resolve({ ok: false, error: `host route ${url} unreachable: ${e.message}` }));
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: `host route ${url} timed out` }); });
+    req.end(data);
+  });
+}
+const ROUTE_METHODS = ['ping', 'preflight', 'writeback', 'sync'];
+function routeHost(o) {
+  const h = { name: o.name || 'route' };
+  if (o.ping) h.ping = async () => { const r = await _postJson(o.ping, {}); return { reachable: r.ok !== false, status: r.ok !== false ? 'ok' : r.error, ...r }; };
+  if (o.preflight) h.preflight = async (args) => { const r = await _postJson(o.preflight, args); return r.ok === false ? { ...EMPTY_PREFLIGHT, ok: false, error: r.error, summary: `preflight route: ${r.error}` } : r; };
+  if (o.writeback) h.writeback = async (compileResult, specPath, opts) => _postJson(o.writeback, { compileResult, specPath, opts: opts ?? {} }, 60000);
+  if (o.sync) h.sync = async (compileResult) => _postJson(o.sync, { compileResult });
+  return h;
+}
+
 function loadHost(h) {
   if (h === undefined || h === null || h === '') h = process.env.EMERGE_HOST || 'local';
   if (h === 'local') return local;
@@ -111,6 +142,8 @@ function loadHost(h) {
     const mod = require(path.resolve(h));
     h = typeof mod.createHost === 'function' ? mod.createHost() : (mod.host ?? mod);
   }
+  // settings that name routes instead of functions (they come through the door as JSON) become a route host
+  if (h && typeof h === 'object' && ROUTE_METHODS.some(m => typeof h[m] === 'string')) h = routeHost(h);
   if (!h || typeof h !== 'object' || !h.name) throw new Error('host must be an object with a name (see emerge/compiler/host.js)');
   return {
     name: h.name,
@@ -122,4 +155,4 @@ function loadHost(h) {
   };
 }
 
-module.exports = { local, loadHost, recordPath, EMPTY_PREFLIGHT, MODULE_ID: 'spec-compiler-host', VERSION: '1.0.0' };
+module.exports = { local, loadHost, routeHost, recordPath, EMPTY_PREFLIGHT, MODULE_ID: 'spec-compiler-host', VERSION: '1.0.0' };

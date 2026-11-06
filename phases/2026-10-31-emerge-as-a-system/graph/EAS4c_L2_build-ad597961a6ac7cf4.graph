@@ -1,0 +1,241 @@
+envelope: 1
+uuid: nexus-export-graph-phase:EAS4c_L2_build:ad597961a6ac7cf4
+type: graph
+id: phase:EAS4c_L2_build:ad597961a6ac7cf4
+context: dependency graph of phase EAS4c_L2_build
+intent: null
+summary: 28 node(s), 0 crossing(s)
+system: idearium
+tags: []
+exported_at: 1793944983984
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793944983984
+lastSeenAt: 1793944983984
+fingerprint: null
+payload:
+  for: EAS4c_L2_build
+  kind: phase
+  repo: null
+  hash: ad597961a6ac7cf4
+  nodes:
+    - path: copilot/module-builder.js
+      role: changes
+      exists: true
+      system: copilot
+    - path: emerge/emerge/compiler/host.js
+      role: changes
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/pipeline.js
+      role: changes
+      exists: true
+      system: emerge
+    - path: emerge/emerge/server.js
+      role: changes
+      exists: true
+      system: emerge
+    - path: emerge/emerge/build-spec.js
+      role: used-by
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/index.js
+      role: used-by
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/t2-gate.js
+      role: used-by
+      exists: true
+      system: emerge
+    - path: emerge/emerge/lib/compiler.js
+      role: used-by
+      exists: true
+      system: emerge
+    - path: emerge/emerge/test/gap-field.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/test/kg.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/test/target.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/test/tier-contract.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/tests/compiler-door.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/tests/lang-door.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/tests/nesting.test.js
+      role: used-by
+      exists: true
+      system: null
+    - path: emerge/emerge/verify.js
+      role: used-by
+      exists: true
+      system: emerge
+    - path: copilot/axiom-manager.js
+      role: uses
+      exists: true
+      system: copilot
+    - path: copilot/lifeline.js
+      role: uses
+      exists: true
+      system: copilot
+    - path: emerge/emerge/compiler/emit.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/gap-field-engine.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/invariants-engine.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/kg-builder.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/reply-engine.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/compiler/tier-contract.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/lib/commands.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/lib/handoff.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/lib/system.js
+      role: uses
+      exists: true
+      system: emerge
+    - path: emerge/emerge/siso/index.js
+      role: uses
+      exists: true
+      system: emerge
+  edges:
+    - from: emerge/emerge/compiler/pipeline.js
+      to: emerge/emerge/siso/index.js
+      kind: requires
+    - from: emerge/emerge/compiler/pipeline.js
+      to: emerge/emerge/compiler/emit.js
+      kind: requires
+    - from: emerge/emerge/compiler/pipeline.js
+      to: emerge/emerge/compiler/kg-builder.js
+      kind: requires
+    - from: emerge/emerge/compiler/pipeline.js
+      to: emerge/emerge/compiler/tier-contract.js
+      kind: requires
+    - from: emerge/emerge/compiler/pipeline.js
+      to: emerge/emerge/compiler/gap-field-engine.js
+      kind: requires
+    - from: emerge/emerge/compiler/pipeline.js
+      to: emerge/emerge/compiler/invariants-engine.js
+      kind: requires
+    - from: emerge/emerge/compiler/pipeline.js
+      to: emerge/emerge/compiler/reply-engine.js
+      kind: requires
+    - from: emerge/emerge/server.js
+      to: emerge/emerge/lib/system.js
+      kind: requires
+    - from: emerge/emerge/server.js
+      to: emerge/emerge/lib/commands.js
+      kind: requires
+    - from: emerge/emerge/server.js
+      to: emerge/emerge/lib/handoff.js
+      kind: requires
+    - from: copilot/module-builder.js
+      to: copilot/lifeline.js
+      kind: requires
+    - from: copilot/module-builder.js
+      to: copilot/axiom-manager.js
+      kind: requires
+    - from: emerge/emerge/build-spec.js
+      to: emerge/emerge/compiler/pipeline.js
+      kind: requires
+    - from: emerge/emerge/compiler/t2-gate.js
+      to: emerge/emerge/compiler/pipeline.js
+      kind: requires
+    - from: emerge/emerge/lib/compiler.js
+      to: emerge/emerge/compiler/pipeline.js
+      kind: requires
+    - from: emerge/emerge/test/gap-field.test.js
+      to: emerge/emerge/compiler/pipeline.js
+      kind: requires
+    - from: emerge/emerge/test/kg.test.js
+      to: emerge/emerge/compiler/pipeline.js
+      kind: requires
+    - from: emerge/emerge/test/target.test.js
+      to: emerge/emerge/compiler/pipeline.js
+      kind: requires
+    - from: emerge/emerge/test/tier-contract.test.js
+      to: emerge/emerge/compiler/pipeline.js
+      kind: requires
+    - from: emerge/emerge/compiler/index.js
+      to: emerge/emerge/compiler/host.js
+      kind: requires
+    - from: emerge/emerge/verify.js
+      to: emerge/emerge/compiler/host.js
+      kind: requires
+    - from: emerge/emerge/tests/compiler-door.test.js
+      to: emerge/emerge/server.js
+      kind: requires
+    - from: emerge/emerge/tests/lang-door.test.js
+      to: emerge/emerge/server.js
+      kind: requires
+    - from: emerge/emerge/tests/nesting.test.js
+      to: emerge/emerge/server.js
+      kind: requires
+  crossings: []
+  ready: true
+  dag:
+    layer: 3
+    deps:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4b_L1_compile
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D9_emerge_calls_back_by_route
+    dependents:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4d_L3_run
+    upstream:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4a_L0_evaluate
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4b_L1_compile
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D5_one_primitive_per_gate
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D6_emerge_is_a_system_in_nexus
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D7_the_spec_compiler_is_emerges
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D9_emerge_calls_back_by_route
+    downstream:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4d_L3_run
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4e_the_callback_routes
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4f_the_callers_switch
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4g_lib_emerge_archived
+    blockedBy: []
+    unlocks:
+      - docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4d_L3_run
+    conflicts: []
+    dangling: []
+    lines:
+      - layer 3
+      - 'depends on (2): EAS4b_L1_compile, EAS_D9_emerge_calls_back_by_route · all upstream 6'
+      - 'needed by (1): EAS4d_L3_run · all downstream 4 · finishing it unlocks EAS4d_L3_run'
+    edges:
+      - from: docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS4b_L1_compile
+        kind: declared
+      - from: docs/2026-10-31-emerge-as-a-system-phasemap.spec::EAS_D9_emerge_calls_back_by_route
+        kind: declared

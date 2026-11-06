@@ -60,6 +60,20 @@ module.exports = {
       consumers: [],
       data: { dir: 'a fresh temp folder per call, removed after', store: 'file', types: [] },
     },
+    // the spec compiler through the door (EAS4 L1, 2026-11-05): POST /compiler/compile — a spec's text in, the emitted files' text out
+    {
+      type: 'component',
+      id: 'emerge.compiler',
+      uuid: 'emerge-comp-comp-0000-2026-1105-000000000001',
+      file: 'lib/compiler.js',
+      intent: "Emerge's spec compiler (T0/T1) served through the system's door: a spec's text in, the emitted files' text out, built on the local host",
+      version: '1.0.0',
+      status: 'built',
+      capabilities: ['emerge.compiler.spec'],
+      hooks: ['emerge.core.http'],
+      consumers: [],
+      data: { dir: 'a fresh temp folder per call, removed after', store: 'file', types: [] },
+    },
   ],
   // the events a person should see, declared here so the UI reads them from the contract and keeps no list of its own
   // (James, 2026-10-17: "making the ui disposable, soveriegn"): [{ event: 'emerge.x.done', level: 'ok'|'warn'|'err', text }]

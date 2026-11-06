@@ -1,0 +1,35 @@
+envelope: 1
+uuid: nexus-export-phase-docs_2026-10-31-emerge-as-a-system-phasemap.spec::EAS4c_L2_build
+type: phase
+id: docs_2026-10-31-emerge-as-a-system-phasemap.spec::EAS4c_L2_build
+context: pipeline phase EAS4c_L2_build of docs/2026-10-31-emerge-as-a-system-phasemap.spec
+intent: null
+summary: EAS4c_L2_build (?) — 4 file(s)
+system: idearium
+tags: []
+exported_at: 1793944983984
+source: nexus.lib.node-export
+occurrences: 1
+firstSeenAt: 1793944983984
+lastSeenAt: 1793944983984
+fingerprint: null
+payload:
+  id: EAS4c_L2_build
+  map: docs/2026-10-31-emerge-as-a-system-phasemap.spec
+  repo: null
+  layer: null
+  status: >-
+    "BUILT (Emerge's side) 0.60.407 — compiler-door CD-05..08; its caller
+    (copilot/module-builder.js) not switched"
+  files:
+    - emerge/emerge/compiler/pipeline.js
+    - emerge/emerge/compiler/host.js
+    - emerge/emerge/server.js
+    - copilot/module-builder.js
+  depends_on:
+    - EAS4b_L1_compile
+    - EAS_D9_emerge_calls_back_by_route
+  blocks:
+    - MOD-EAS-CALLERS
+  spec: docs/emerge-system.spec
+  graph: ad597961a6ac7cf4
